@@ -133,7 +133,7 @@ private:
 		d.prev = invalid_index;
 	}
 
-	index_t allocate_entry()
+	index_t allocate_entry(index_t index)
 	{
 		index_t last_dir;
 		index_t pos = find(index, last_dir);
@@ -145,7 +145,7 @@ private:
 
 	index_t insert_tail(index_t index, key_t key, value_t value)
 	{
-		index_t new_index = allocate_entry();
+		index_t new_index = allocate_entry(index);
 		index_t prev = index;
 		while (index != invalid_index)
 		{
