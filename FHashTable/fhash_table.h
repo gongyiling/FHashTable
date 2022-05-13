@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <memory>
+#include <vector>
 
 template <typename key_t, typename value_t, typename hasher_t = std::hash<key_t>, int32_t entries_per_bucket = 2>
 class fhash_table
@@ -141,6 +142,7 @@ public:
 			// alread exists.
 			return invalid_index;
 		}
+		try_grow();
 		index = compute_hash(key);
 		m_size++;
 		return insert_index(index, key, value);
@@ -161,7 +163,69 @@ public:
 		}
 	}
 
+	void validate() const
+	{
+		if (m_entries != nullptr)
+		{
+			std::vector<bool> visited;
+			visited.resize(m_entries_size);
+			int32_t size = 0;
+			for (int32_t i = 0; i < m_entries_size; i++)
+			{
+				index_t index = index_t(i);
+				const entry* e = &get_entry(index);
+				if (e->is_data())
+				{
+					for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
+					{
+						assert(!visited[index.value]);
+						if (e->d.prev != invalid_index)
+						{
+							assert(get_entry(e->d.prev).d.next == index);
+						}
+						if (e->d.next != invalid_index)
+						{
+							assert(get_entry(e->d.next).d.prev == index);
+						}
+						visited[index.value] = true;
+					}
+					size++;
+				}
+				else
+				{
+
+				}
+			}
+			
+			assert(size == m_size);
+			
+			int32_t tree_size = validate_tree(m_root);
+			assert(tree_size + m_size == m_entries_size);
+		}
+	}
+
 private:
+
+	int32_t validate_tree(index_t index) const
+	{
+		if (index == invalid_index)
+		{
+			return 0;
+		}
+		int32_t size = 1;
+		const node& n = get_node(index);
+		if (n.lchild != invalid_node_index)
+		{
+			assert(get_node(n.lchild).parent == index_to_node_index(index));
+			size += validate_tree(node_index_to_index(n.lchild));
+		}
+		if (n.rchild != invalid_node_index)
+		{
+			assert(get_node(n.rchild).parent == index_to_node_index(index));
+			size += validate_tree(node_index_to_index(n.rchild));
+		}
+		return size;
+	}
 
 	index_t compute_hash(key_t key) const
 	{
@@ -205,7 +269,6 @@ private:
 
 	index_t insert_index(index_t index, key_t key, value_t value)
 	{
-		try_grow();
 		entry& e = get_entry(index);
 		data& d = e.d;
 		if (e.is_data())
@@ -230,6 +293,7 @@ private:
 		}
 		else
 		{
+			remove_node(index);
 			insert_empty(d, key, value);
 			return index;
 		}
@@ -276,6 +340,10 @@ private:
 
 	index_t find_index(key_t key) const
 	{
+		if (m_size == 0)
+		{
+			return invalid_index;
+		}
 		index_t index = compute_hash(key);
 		const entry* e = &get_entry(index);
 		if (!e->is_data())
