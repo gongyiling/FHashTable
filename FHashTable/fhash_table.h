@@ -135,7 +135,14 @@ public:
 
 	index_t insert(key_t key, value_t value)
 	{
-		index_t index = compute_hash(key);
+		index_t index = find_index(key);
+		if (index != invalid_index)
+		{
+			// alread exists.
+			return invalid_index;
+		}
+		index = compute_hash(key);
+		m_size++;
 		return insert_index(index, key, value);
 	}
 
@@ -144,6 +151,7 @@ public:
 		index_t index = find_index(key);
 		if (index != invalid_index)
 		{
+			m_size--;
 			remove_index(index);
 			return true;
 		}
@@ -280,7 +288,7 @@ private:
 
 	void try_grow()
 	{
-		if (m_size >= m_entries_size)
+		if (m_size + 1 >= m_entries_size)
 		{
 			rehash();
 		}
