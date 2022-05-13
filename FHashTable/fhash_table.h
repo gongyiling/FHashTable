@@ -170,6 +170,7 @@ public:
 			std::vector<bool> visited;
 			visited.resize(m_entries_size);
 			int32_t size = 0;
+			int32_t visited_size = 0;
 			for (int32_t i = 0; i < m_entries_size; i++)
 			{
 				index_t index = index_t(i);
@@ -178,16 +179,19 @@ public:
 				{
 					for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
 					{
-						assert(!visited[index.value]);
-						if (e->d.prev != invalid_index)
+						if (!visited[index.value])
 						{
-							assert(get_entry(e->d.prev).d.next == index);
+							if (e->d.prev != invalid_index)
+							{
+								assert(get_entry(e->d.prev).d.next == index);
+							}
+							if (e->d.next != invalid_index)
+							{
+								assert(get_entry(e->d.next).d.prev == index);
+							}
+							visited[index.value] = true;
+							visited_size++;
 						}
-						if (e->d.next != invalid_index)
-						{
-							assert(get_entry(e->d.next).d.prev == index);
-						}
-						visited[index.value] = true;
 					}
 					size++;
 				}
@@ -196,11 +200,20 @@ public:
 
 				}
 			}
-			
+
+			assert(size == visited_size);
 			assert(size == m_size);
 			
 			int32_t tree_size = validate_tree(m_root);
 			assert(tree_size + m_size == m_entries_size);
+		}
+	}
+
+	void reserve(int32_t expected_size)
+	{
+		if (expected_size > m_entries_size / entries_per_bucket)
+		{
+			rehash(expected_size);
 		}
 	}
 
@@ -358,15 +371,15 @@ private:
 	{
 		if (m_size + 1 >= m_entries_size)
 		{
-			rehash();
+			rehash(m_size + 1);
 		}
 	}
 
-	void rehash()
+	void rehash(int32_t expected_size)
 	{
 		fhash_table old_table(std::move(*this));
 
-		m_entries_size = std::max(m_size * entries_per_bucket, 4);
+		m_entries_size = std::max(expected_size * entries_per_bucket, 4);
 		m_entries = (entry*)malloc(m_entries_size * sizeof(entry));
 
 		// build the tree.
@@ -554,9 +567,8 @@ private:
 
 	void remove_node(index_t index)
 	{
+		const node_index_t node_index = index_to_node_index(index);
 		node& n = get_node(index);
-		node_index_t new_root = invalid_node_index;
-
 		if (n.lchild != invalid_node_index && n.rchild != invalid_node_index)
 		{
 			index_t swap_index = step(index, index_t(1));
@@ -565,6 +577,7 @@ private:
 		}
 		assert(n.lchild == invalid_node_index || n.rchild == invalid_node_index);
 
+		node_index_t new_root = invalid_node_index;
 		if (n.lchild != invalid_node_index)
 		{
 			new_root = n.lchild;
@@ -574,16 +587,18 @@ private:
 			new_root = n.rchild;
 		}
 
+		const index_t node_dir = get_node_dir(node_index);
+		if (node_dir != invalid_index)
+		{
+			get_node(n.parent).get_child_index(node_dir) = new_root;
+		}
+
 		if (new_root != invalid_node_index)
 		{
-			const index_t node_dir = get_node_dir(new_root);
-			if (node_dir != invalid_index)
-			{
-				get_node(n.parent).get_child_index(node_dir) = new_root;
-			}
 			get_node(new_root).parent = n.parent;
 		}
-		else if (n.parent == invalid_node_index)
+
+		if (n.parent == invalid_node_index)
 		{
 			m_root = invalid_index;
 		}
