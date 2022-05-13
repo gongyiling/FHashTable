@@ -23,6 +23,8 @@ public:
 		bool operator > (integer_t other) const { return value > other.value; }
 
 		friend integer_t operator + (integer_t a, integer_t b) { return integer_t(a.value + b.value); }
+		friend integer_t operator - (integer_t a, integer_t b) { return integer_t(a.value - b.value); }
+		friend integer_t operator * (integer_t a, integer_t b) { return integer_t(a.value * b.value); }
 		friend integer_t operator / (integer_t a, integer_t b) { return integer_t(a.value / b.value); }
 	};
 
@@ -118,6 +120,39 @@ public:
 		m_root = invalid_index;
 	}
 
+	const value_t* find(key_t key) const
+	{
+		index_t index =  find_index(key);
+		if (index == invalid_index)
+		{
+			return nullptr;
+		}
+		else
+		{
+			return &get_entry(index).d.value;
+		}
+	}
+
+	index_t insert(key_t key, value_t value)
+	{
+		index_t index = compute_hash(key);
+		return insert_index(index, key, value);
+	}
+
+	bool remove(key_t key)
+	{
+		index_t index = find_index(key);
+		if (index != invalid_index)
+		{
+			remove_index(index);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
 private:
 
 	index_t compute_hash(key_t key) const
@@ -136,7 +171,7 @@ private:
 	index_t allocate_entry(index_t index)
 	{
 		index_t last_dir;
-		index_t pos = find(index, last_dir);
+		index_t pos = find_node(index, last_dir);
 		assert(pos != invalid_index);
 		// remove from tree.
 		remove_node(pos);
@@ -160,12 +195,6 @@ private:
 		return new_index;
 	}
 
-	index_t insert(key_t key, value_t value)
-	{
-		index_t index = compute_hash(key);
-		return insert_index(index, key, value);
-	}
-
 	index_t insert_index(index_t index, key_t key, value_t value)
 	{
 		try_grow();
@@ -176,8 +205,8 @@ private:
 			if (d.prev != invalid_index)
 			{
 				// we are list from other slot.
-				key_t victim_key = e.key;
-				value_t victim_value = e.value;
+				key_t victim_key = d.key;
+				value_t victim_value = d.value;
 
 				const index_t unlinked_index = unlink_index(index);
 				assert(unlinked_index == index);
@@ -188,7 +217,7 @@ private:
 			}
 			else
 			{
-				return insert_tail(d, key, value);
+				return insert_tail(index, key, value);
 			}
 		}
 		else
@@ -237,6 +266,18 @@ private:
 		add_node(index);
 	}
 
+	index_t find_index(key_t key) const
+	{
+		index_t index = compute_hash(key);
+		const entry* e = &get_entry(index);
+		if (!e->is_data())
+		{
+			return invalid_index;
+		}
+		for (; e->d.key != key && index != invalid_index; index = e->d.next, e = &get_entry(index));
+		return index;
+	}
+
 	void try_grow()
 	{
 		if (m_size >= m_entries_size)
@@ -250,21 +291,21 @@ private:
 		fhash_table old_table(std::move(*this));
 
 		m_entries_size = std::max(m_size * entries_per_bucket, 4);
-		m_entries = malloc(m_entries_size * sizeof(entry));
+		m_entries = (entry*)malloc(m_entries_size * sizeof(entry));
 
 		// build the tree.
-		m_root = build_tree(0, m_entries_size);
-		get_node(m_root).parent = invalid_index;
+		m_root = build_tree(index_t(0), index_t(m_entries_size));
+		get_node(m_root).parent = invalid_node_index;
 
 		// now insert old data to new table.
 		if (old_table.m_entries != nullptr)
 		{
 			for (int32_t i = 0; i < old_table.m_entries_size; i++)
 			{
-				entry& e = old_table.get_entry(i);
+				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data())
 				{
-					insert_no_check(e.d.key, e.d.value);
+					insert(e.d.key, e.d.value);
 				}
 			}
 		}
@@ -279,7 +320,17 @@ private:
 
 	entry& get_entry(node_index_t node_index)
 	{
-		return get_node(node::node_index_to_index(node_index));
+		return get_entry(node_index_to_index(node_index));
+	}
+
+	const entry& get_entry(index_t index) const
+	{
+		return m_entries[index.value];
+	}
+
+	const entry& get_entry(node_index_t node_index) const
+	{
+		return get_entry(node_index_to_index(node_index));
 	}
 
 	node& get_node(index_t index)
@@ -288,6 +339,16 @@ private:
 	}
 
 	node& get_node(node_index_t node_index)
+	{
+		return get_entry(node_index).n;
+	}
+
+	const node& get_node(index_t index) const
+	{
+		return get_entry(index).n;
+	}
+
+	const node& get_node(node_index_t node_index) const
 	{
 		return get_entry(node_index).n;
 	}
@@ -303,12 +364,12 @@ private:
 		node& root = get_node(mid);
 
 		const index_t lchild = build_tree(begin, mid);
-		const index_t rchild = build_tree(mid + 1, end);
+		const index_t rchild = build_tree(mid + index_t(1), end);
 
 		if (lchild != invalid_index)
 		{
-			get_node(lchild).parent = node::index_to_node_index(mid);
-			root.lchild = node::index_to_node_index(lchild);
+			get_node(lchild).parent = index_to_node_index(mid);
+			root.lchild = index_to_node_index(lchild);
 		}
 		else
 		{
@@ -317,8 +378,8 @@ private:
 
 		if (rchild != invalid_index)
 		{
-			get_node(rchild).parent = node::index_to_node_index(mid);
-			root.rchild = node::index_to_node_index(rchild);
+			get_node(rchild).parent = index_to_node_index(mid);
+			root.rchild = index_to_node_index(rchild);
 		}
 		else
 		{
@@ -331,18 +392,18 @@ private:
 	index_t get_node_dir(node_index_t index)
 	{
 		node& n = get_node(index);
-		if (n.parent == invalid_index)
+		if (n.parent == invalid_node_index)
 		{
 			return invalid_index;
 		}
 		node& p = get_node(n.parent);
 		if (p.lchild == index)
 		{
-			return 0;
+			return index_t(0);
 		}
 		else if (p.rchild == index)
 		{
-			return 1;
+			return index_t(1);
 		}
 		else
 		{
@@ -358,7 +419,7 @@ private:
 		while (child != invalid_node_index)
 		{
 			pchild = child;
-			child = get_node(child).get_child_index(1 - dir);
+			child = get_node(child).get_child_index(index_t(1) - dir);
 		}
 		if (pchild == invalid_node_index)
 		{
@@ -374,16 +435,16 @@ private:
 	{
 		node& na = get_node(a);
 		node& nb = get_node(b);
-		const node_index_t na_index = node::index_to_node_index(a);
-		const node_index_t nb_index = node::index_to_node_index(b);
+		const node_index_t na_index = index_to_node_index(a);
+		const node_index_t nb_index = index_to_node_index(b);
 
 		// swap parent.child index.
-		const index_t na_dir = get_node_dir(a);
+		const index_t na_dir = get_node_dir(na_index);
 		if (na_dir != invalid_index)
 		{
 			get_node(na.parent).get_child_index(na_dir) = nb_index;
 		}
-		const int32_t nb_dir = get_node_dir(b);
+		const index_t nb_dir = get_node_dir(nb_index);
 		if (nb_dir != invalid_index)
 		{
 			get_node(nb.parent).get_child_index(nb_dir) = na_index;
@@ -422,7 +483,7 @@ private:
 
 		if (n.lchild != invalid_node_index && n.rchild != invalid_node_index)
 		{
-			index_t swap_index = step<1>(index);
+			index_t swap_index = step(index, index_t(1));
 			assert(swap_index != invalid_index);
 			swap_node_index(index, swap_index);
 		}
@@ -439,7 +500,7 @@ private:
 
 		if (new_root != invalid_node_index)
 		{
-			const index_t node_dir = get_node_dir(index);
+			const index_t node_dir = get_node_dir(new_root);
 			if (node_dir != invalid_index)
 			{
 				get_node(n.parent).get_child_index(node_dir) = new_root;
@@ -452,7 +513,7 @@ private:
 		}
 	}
 
-	index_t find(index_t index, index_t& last_dir) const
+	index_t find_node(index_t index, index_t& last_dir) const
 	{
 		index_t prev = invalid_index;
 		index_t current = m_root;
@@ -464,14 +525,21 @@ private:
 			{
 				return index;
 			}
-			if (n.lchild != invalid_index && index < node::node_index_to_index(n.lchild))
+			if (n.lchild != invalid_node_index && index < node_index_to_index(n.lchild))
 			{
-				next = node::node_index_to_index(n.lchild);
+				next = node_index_to_index(n.lchild);
 				last_dir = index_t(0);
 			}
 			else
 			{
-				next = node::node_index_to_index(n.rchild);
+				if (n.rchild != invalid_node_index)
+				{
+					next = node_index_to_index(n.rchild);
+				}
+				else
+				{
+					next = invalid_index;
+				}
 				last_dir = index_t(1);
 			}
 			prev = current;
@@ -483,7 +551,7 @@ private:
 	void add_node(index_t index)
 	{
 		index_t last_dir;
-		index_t insert_index = find(index, last_dir);
+		index_t insert_index = find_node(index, last_dir);
 		assert(insert_index < index);
 		if (insert_index == invalid_index)
 		{
@@ -499,8 +567,8 @@ private:
 
 		node_index_t& child_index = get_node(insert_index).get_child_index(last_dir);
 		assert(child_index == invalid_node_index);
-		child_index = node::index_to_node_index(index);
-		n.parent = node::index_to_node_index(insert_index);
+		child_index = index_to_node_index(index);
+		n.parent = index_to_node_index(insert_index);
 	}
 
 	int32_t bucket_size() const
