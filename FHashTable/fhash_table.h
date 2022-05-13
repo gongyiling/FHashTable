@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <memory>
 
-template <typename key_t, typename value_t, int32_t entries_per_bucket = 2>
+template <typename key_t, typename value_t, typename hasher_t = std::hash<key_t>, int32_t entries_per_bucket = 2>
 class fhash_table
 {
 public:
@@ -16,8 +16,10 @@ public:
 		integer_t operator = (integer_t other){ value = other.value; return *this; }
 
 		bool operator < (integer_t other) const{return value < other.value;}
+		bool operator <= (integer_t other) const { return value <= other.value; }
 		bool operator == (integer_t other) const { return value == other.value; }
 		bool operator != (integer_t other) const { return value != other.value; }
+		bool operator >= (integer_t other) const { return value >= other.value; }
 		bool operator > (integer_t other) const { return value > other.value; }
 
 		friend integer_t operator + (integer_t a, integer_t b) { return integer_t(a.value + b.value); }
@@ -91,11 +93,156 @@ public:
 		other.m_size = 0;
 	}
 
+	~fhash_table()
+	{
+		clear();
+	}
+
+	void clear()
+	{
+		if (m_entries != nullptr)
+		{
+			for (int32_t i = 0; i < m_entries_size; i++)
+			{
+				entry& e = m_entries[i];
+				if (e.is_data())
+				{
+					e.d.~data();
+				}
+			}
+			free(m_entries);
+			m_entries = nullptr;
+		}
+		m_entries_size = 0;
+		m_size = 0;
+		m_root = invalid_index;
+	}
+
 private:
 
-	void insert_no_check(key_t key, value_t value)
+	index_t compute_hash(key_t key) const
 	{
+		return index_t(m_hasher(key) % bucket_size());
+	}
 
+	void insert_empty(data& d, key_t key, value_t value)
+	{
+		d.key = key;
+		d.value = value;
+		d.next = invalid_index;
+		d.prev = invalid_index;
+	}
+
+	index_t allocate_entry()
+	{
+		index_t last_dir;
+		index_t pos = find(index, last_dir);
+		assert(pos != invalid_index);
+		// remove from tree.
+		remove_node(pos);
+		return pos;
+	}
+
+	index_t insert_tail(index_t index, key_t key, value_t value)
+	{
+		index_t new_index = allocate_entry();
+		index_t prev = index;
+		while (index != invalid_index)
+		{
+			prev = index;
+			index = get_entry(index).d.next;
+		}
+		data& p = get_entry(prev).d;
+		data& t = get_entry(new_index).d;
+		p.next = new_index;
+		t.prev = prev;
+		t.next = invalid_index;
+		return new_index;
+	}
+
+	index_t insert(key_t key, value_t value)
+	{
+		index_t index = compute_hash(key);
+		return insert_index(index, key, value);
+	}
+
+	index_t insert_index(index_t index, key_t key, value_t value)
+	{
+		try_grow();
+		entry& e = get_entry(index);
+		data& d = e.d;
+		if (e.is_data())
+		{
+			if (d.prev != invalid_index)
+			{
+				// we are list from other slot.
+				key_t victim_key = e.key;
+				value_t victim_value = e.value;
+
+				const index_t unlinked_index = unlink_index(index);
+				assert(unlinked_index == index);
+
+				insert_empty(d, key, value);
+				insert(victim_key, victim_value);
+				return index;
+			}
+			else
+			{
+				return insert_tail(d, key, value);
+			}
+		}
+		else
+		{
+			insert_empty(d, key, value);
+			return index;
+		}
+	}
+
+	index_t unlink_index(index_t index)
+	{
+		entry& e = get_entry(index);
+		data& d = e.d;
+		assert(e.is_data());
+		// fix previous.
+		if (d.prev != invalid_index)
+		{
+			get_entry(d.prev).d.next = d.next;
+			if (d.next != invalid_index)
+			{
+				get_entry(d.next).d.prev = d.prev;
+			}
+		}
+		else
+		{
+			// i'm the first, move the next to first and unlink the next.
+			const index_t next_index = d.next;
+			if (next_index != invalid_index)
+			{
+				data& next = get_entry(next_index).d;
+				const index_t unlinked_index = unlink_index(next_index);
+				assert(unlinked_index == next_index);
+
+				d.key = next.key;
+				d.value = next.value;
+				
+				index = unlinked_index;
+			}
+		}
+		return index;
+	}
+
+	void remove_index(index_t index)
+	{
+		index = unlink_index(index);
+		add_node(index);
+	}
+
+	void try_grow()
+	{
+		if (m_size >= m_entries_size)
+		{
+			rehash();
+		}
 	}
 
 	void rehash()
@@ -105,27 +252,44 @@ private:
 		m_entries_size = std::max(m_size * entries_per_bucket, 4);
 		m_entries = malloc(m_entries_size * sizeof(entry));
 
-		// build the size tree.
+		// build the tree.
 		m_root = build_tree(0, m_entries_size);
-		m_entries[m_entries_size].n.parent = invalid_index;
+		get_node(m_root).parent = invalid_index;
 
 		// now insert old data to new table.
-		for (int32_t i = 0; i < old_table.m_entries_size; i++)
+		if (old_table.m_entries != nullptr)
 		{
-			//if ()
+			for (int32_t i = 0; i < old_table.m_entries_size; i++)
+			{
+				entry& e = old_table.get_entry(i);
+				if (e.is_data())
+				{
+					insert_no_check(e.d.key, e.d.value);
+				}
+			}
 		}
 	}
 
 private:
 
+	entry& get_entry(index_t index)
+	{
+		return m_entries[index.value];
+	}
+
+	entry& get_entry(node_index_t node_index)
+	{
+		return get_node(node::node_index_to_index(node_index));
+	}
+
 	node& get_node(index_t index)
 	{
-		return m_entries[index.value].n;
+		return get_entry(index).n;
 	}
 
 	node& get_node(node_index_t node_index)
 	{
-		return get_node(node::node_index_to_index(node_index));
+		return get_entry(node_index).n;
 	}
 
 	// size tree operation.
@@ -346,6 +510,7 @@ private:
 
 private:
 	entry* m_entries = nullptr;
+	hasher_t m_hasher;
 	int32_t m_entries_size = 0;
 	int32_t m_size = 0;
 	index_t m_root = invalid_index;
