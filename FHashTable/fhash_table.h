@@ -611,9 +611,9 @@ private:
 			get_node(new_root).parent = n.parent;
 		}
 
-		if (n.parent == invalid_node_index)
+		if (index == m_root)
 		{
-			m_root = invalid_index;
+			m_root = node_index_to_index_check_invalid(new_root);
 		}
 	}
 
