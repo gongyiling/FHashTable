@@ -46,6 +46,18 @@ public:
 		return index_t(-3 - node_index.value);
 	}
 
+	static index_t node_index_to_index_check_invalid(node_index_t node_index)
+	{
+		if (node_index == invalid_node_index)
+		{
+			return invalid_index;
+		}
+		else
+		{
+			return node_index_to_index(node_index);
+		}
+	}
+
 	static node_index_t index_to_node_index(index_t index)
 	{
 		return node_index_t(-3 - index.value);
@@ -177,10 +189,11 @@ public:
 				const entry* e = &get_entry(index);
 				if (e->is_data())
 				{
-					for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
+					if (e->d.prev == invalid_index)
 					{
-						if (!visited[index.value])
+						for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
 						{
+							assert(!visited[index.value]);
 							if (e->d.prev != invalid_index)
 							{
 								assert(get_entry(e->d.prev).d.next == index);
@@ -611,30 +624,21 @@ private:
 		while (current != invalid_index)
 		{
 			const node& n = get_node(current);
-			index_t next = invalid_index;
-			if (current == index)
+			prev = current;
+			if (index == current)
 			{
 				return index;
 			}
-			if (n.lchild != invalid_node_index && index < node_index_to_index(n.lchild))
+			else if (index < current)
 			{
-				next = node_index_to_index(n.lchild);
+				current = node_index_to_index_check_invalid(n.lchild);
 				last_dir = index_t(0);
 			}
 			else
 			{
-				if (n.rchild != invalid_node_index)
-				{
-					next = node_index_to_index(n.rchild);
-				}
-				else
-				{
-					next = invalid_index;
-				}
+				current = node_index_to_index_check_invalid(n.rchild);
 				last_dir = index_t(1);
 			}
-			prev = current;
-			current = next;
 		}
 		return prev;
 	}
@@ -643,7 +647,6 @@ private:
 	{
 		index_t last_dir;
 		index_t insert_index = find_node(index, last_dir);
-		assert(insert_index < index);
 		if (insert_index == invalid_index)
 		{
 			assert(m_root == invalid_index);
