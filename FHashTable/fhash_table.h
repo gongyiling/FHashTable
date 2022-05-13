@@ -41,8 +41,6 @@ public:
 		int32_t lchild;
 		int32_t rchild;
 		int32_t parent;
-		int32_t size;
-		int32_t index;
 	};
 
 	union entry
@@ -75,11 +73,7 @@ private:
 		m_entries = malloc(m_entries_size * sizeof(entry));
 
 		// build the size tree.
-		m_size_tree_root = build_size_tree(0, m_entries_size);
-		for (int32_t i = 0; i < m_entries_size; i++)
-		{
-			m_entries_size[i].index = i;
-		}
+		m_root = build_tree(0, m_entries_size);
 		m_entries[m_entries_size].n.parent = invalid_index;
 	}
 
@@ -89,7 +83,7 @@ private:
 		return m_entries[node::index_to_node_index(node_index)].n;
 	}
 	// size tree operation.
-	int32_t build_size_tree(int32_t begin, int32_t end)
+	int32_t build_tree(int32_t begin, int32_t end)
 	{
 		if (begin == end)
 		{
@@ -98,13 +92,11 @@ private:
 		const int32_t mid = (begin + end) / 2;
 		node& root = m_entries[mid].n;
 
-		const int32_t lchild = build_size_tree(begin, mid);
-		const int32_t rchild = build_size_tree(mid, end);
-		root.size = 0;
+		const int32_t lchild = build_tree(begin, mid);
+		const int32_t rchild = build_tree(mid + 1, end);
 
 		if (lchild != invalid_index)
 		{
-			root.size += get_node(lchild).size;
 			get_node(lchild).parent = node::index_to_node_index(mid);
 			root.lchild = node::index_to_node_index(lchild);
 		}
@@ -115,7 +107,6 @@ private:
 
 		if (rchild != invalid_index)
 		{
-			root.size += get_node(rchild).size;
 			get_node(rchild).parent = node::index_to_node_index(mid);
 			root.rchild = node::index_to_node_index(rchild);
 		}
@@ -206,7 +197,6 @@ private:
 		std::swap(na.lchild, nb.lchild);
 		std::swap(na.rchild, nb.rchild);
 		std::swap(na.parent, nb.parent);
-		std::swap(na.size, nb.size);
 		// does not swap index, it's our data!
 	}
 
@@ -241,22 +231,61 @@ private:
 			}
 			get_node(new_root).parent = n.parent;
 		}
+		else if (n.parent == invalid_index)
+		{
+			m_root = invalid_index;
+		}
+	}
 
-		update_size(node::node_index_to_index(n.parent), -1);
+	int32_t find(int32_t index, int32_t& last_dir) const
+	{
+		int32_t prev = invalid_index;
+		int32_t current = m_root;
+		while (current != invalid_index)
+		{
+			const node& n = m_entries[current].n;
+			int32_t next = invalid_index;
+			if (current == index)
+			{
+				return index;
+			}
+			if (n.lchild != invalid_index && index < node::node_index_to_index(n.lchild))
+			{
+				next = node::node_index_to_index(n.lchild);
+				last_dir = 0;
+			}
+			else
+			{
+				next = node::node_index_to_index(n.rchild);
+				last_dir = 1;
+			}
+			prev = current;
+			current = next;
+		}
+		return prev;
 	}
 
 	void add_node(int32_t index)
 	{
-
-	}
-
-	void update_size(int32_t index, int32_t count)
-	{
-		while (index != invalid_index)
+		int32_t last_dir;
+		int32_t insert_index = find(index, last_dir);
+		assert(insert_index < index);
+		if (insert_index == invalid_index)
 		{
-			m_entries[index].n.size += count;
-			index = m_entries[index].n.parent;
+			assert(m_root == invalid_index);
+			m_root = index;
+			node& n = m_entries[index].n;
+			n.lchild = n.rchild = n.parent = invalid_index;
+			return;
 		}
+
+		node& n = m_entries[index].n;
+		n.lchild = n.rchild = invalid_index;
+
+		int32_t& child_index = m_entries[insert_index].n.get_child_index(last_dir);
+		assert(child_index == invalid_index);
+		child_index = node::index_to_node_index(index);
+		n.parent = node::index_to_node_index(insert_index);
 	}
 
 	int32_t bucket_size() const
@@ -268,5 +297,5 @@ private:
 	entry* m_entries = nullptr;
 	int32_t m_entries_size = 0;
 	int32_t m_size = 0;
-	int32_t m_size_tree_root = invalid_index;
+	int32_t m_root = invalid_index;
 };
