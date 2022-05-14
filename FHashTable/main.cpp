@@ -1,5 +1,6 @@
 #include "fhash_table.h"
 #include <map>
+#include <stdlib.h>
 
 int main()
 {
@@ -8,13 +9,13 @@ int main()
 	m.erase(1);
 	for (int i = 0; i < 1000; i++)
 	{
-		h.insert(i, i);
-		const int* pi = h.find(i);
+		auto r = rand();
+		h.insert(r, i);
+		const int* pi = h.find(r);
 		assert(*pi == i);
-		const int* pii = h.find(i + 1000);
-		assert(pii == nullptr);
 		h.validate();
 	}
+	std::vector<int32_t> distance = h.get_distance_stats();
 	h.reserve(2);
 	h.validate();
 	h.insert(1, 1);

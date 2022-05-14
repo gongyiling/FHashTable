@@ -153,13 +153,14 @@ public:
 		const hash_t hash = compute_hash(key);
 		if (m_size > 0)
 		{
-			const bool found = find_index(key, compute_slot(hash), 
-				[](index_t index) {return true; },
-				[]() {return false; });
-			if (found)
+			const index_t index = find_index(key, compute_slot(hash), 
+				[](index_t index) {return index; },
+				[]() {return invalid_index; });
+			if (index != invalid_index)
 			{
-				// alread exists.
-				return invalid_index;
+				// alread exists, replace it.
+				get_entry(index).d.value = value;
+				return index;
 			}
 		}
 		try_grow();
@@ -223,6 +224,33 @@ public:
 		{
 			rehash(expected_size);
 		}
+	}
+
+	std::vector<int32_t> get_distance_stats() const
+	{
+		std::vector<int32_t> distances;
+		if (m_entries == get_default_entries())
+		{
+			return distances;
+		}
+		for (int32_t i = 0; i < m_entries_size; i++)
+		{
+			index_t index = index_t(i);
+			const entry* e = &get_entry(index);
+			if (e->is_data() && e->d.prev == invalid_index)
+			{	
+				for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
+				{
+					const uint32_t distance = std::abs(index.value - i);
+					if (distances.size() <= distance)
+					{
+						distances.resize(distance + 1);
+					}
+					distances[distance]++;
+				}
+			}
+		}
+		return distances;
 	}
 
 private:
