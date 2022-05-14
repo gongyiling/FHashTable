@@ -156,8 +156,9 @@ public:
 		}
 		try_grow();
 		index = compute_hash(key);
+		index = insert_index(index, key, value);
 		m_size++;
-		return insert_index(index, key, value);
+		return index;
 	}
 
 	bool remove(key_t key)
@@ -307,7 +308,7 @@ private:
 
 				const index_t unlinked_index = unlink_index(index);
 				assert(unlinked_index == index);
-
+				m_size--;
 				insert_empty(d, key, value);
 				insert(victim_key, victim_value);
 				return index;
@@ -533,87 +534,81 @@ private:
 		}
 	}
 
-	void swap_node_index(index_t a, index_t b)
+	void remove_node(index_t erased_index)
 	{
-		node& na = get_node(a);
-		node& nb = get_node(b);
-		const node_index_t na_index = index_to_node_index(a);
-		const node_index_t nb_index = index_to_node_index(b);
+		const node_index_t erased_node_index = index_to_node_index(erased_index);
 
-		// swap parent.child index.
-		const index_t na_dir = get_node_dir(na_index);
-		if (na_dir != invalid_index)
+		// copied from std::_Tree_val::_Extract
+		node_index_t erased_node = erased_node_index;
+		node_index_t fixnode;
+		node_index_t fixnode_parent;
+		node_index_t pnode = erased_node;
+		if (get_node(pnode).lchild == invalid_node_index)
 		{
-			get_node(na.parent).get_child_index(na_dir) = nb_index;
+			fixnode = get_node(pnode).rchild;
 		}
-		const index_t nb_dir = get_node_dir(nb_index);
-		if (nb_dir != invalid_index)
+		else if (get_node(pnode).rchild == invalid_node_index)
 		{
-			get_node(nb.parent).get_child_index(nb_dir) = na_index;
+			fixnode = get_node(pnode).lchild;
 		}
-
-		// swap child.parent index. 
-		if (na.lchild != invalid_node_index)
+		else
 		{
-			get_node(na.lchild).parent = nb_index;
-		}
-		if (na.rchild != invalid_node_index)
-		{
-			get_node(na.rchild).parent = nb_index;
+			pnode = index_to_node_index(step(erased_index, index_t(1)));
+			fixnode = get_node(pnode).rchild;
 		}
 
-		if (nb.lchild != invalid_node_index)
+		if (pnode == erased_node)
 		{
-			get_node(nb.lchild).parent = na_index;
+			fixnode_parent = get_node(erased_node).parent;
+			if (fixnode != invalid_node_index)
+			{
+				get_node(fixnode).parent = fixnode_parent;
+			}
+			if (m_root == node_index_to_index(erased_node))
+			{
+				m_root = node_index_to_index(fixnode);
+			}
+			else if (get_node(fixnode_parent).lchild == erased_node_index)
+			{
+				get_node(fixnode_parent).lchild = fixnode;
+			}
+			else
+			{
+				get_node(fixnode_parent).rchild = fixnode;
+			}
 		}
-		if (nb.rchild != invalid_node_index)
+		else
 		{
-			get_node(nb.rchild).parent = na_index;
-		}
-
-		// swap node data
-		std::swap(na.lchild, nb.lchild);
-		std::swap(na.rchild, nb.rchild);
-		std::swap(na.parent, nb.parent);
-		// does not swap index, it's our data!
-	}
-
-	void remove_node(index_t index)
-	{
-		const node_index_t node_index = index_to_node_index(index);
-		node& n = get_node(index);
-		if (n.lchild != invalid_node_index && n.rchild != invalid_node_index)
-		{
-			index_t swap_index = step(index, index_t(1));
-			assert(swap_index != invalid_index);
-			swap_node_index(index, swap_index);
-		}
-		assert(n.lchild == invalid_node_index || n.rchild == invalid_node_index);
-
-		node_index_t new_root = invalid_node_index;
-		if (n.lchild != invalid_node_index)
-		{
-			new_root = n.lchild;
-		}
-		else if (n.rchild != invalid_node_index)
-		{
-			new_root = n.rchild;
-		}
-
-		const index_t node_dir = get_node_dir(node_index);
-		if (node_dir != invalid_index)
-		{
-			get_node(n.parent).get_child_index(node_dir) = new_root;
-		}
-
-		if (new_root != invalid_node_index)
-		{
-			get_node(new_root).parent = n.parent;
-		}
-
-		if (index == m_root)
-		{
-			m_root = node_index_to_index_check_invalid(new_root);
+			get_node(get_node(erased_node).lchild).parent = pnode;
+			get_node(pnode).lchild = get_node(erased_node).lchild;
+			if (pnode == get_node(erased_node).rchild)
+			{
+				fixnode_parent = pnode;
+			}
+			else
+			{
+				fixnode_parent = get_node(pnode).parent;
+				if (fixnode != invalid_node_index)
+				{
+					get_node(fixnode).parent = fixnode_parent;
+				}
+				get_node(fixnode_parent).lchild = fixnode;
+				get_node(pnode).rchild = get_node(erased_node).rchild;
+				get_node(get_node(erased_node).rchild).parent = pnode;
+			}
+			if (m_root == node_index_to_index(erased_node))
+			{
+				m_root = node_index_to_index(pnode);
+			}
+			else if (get_node(get_node(erased_node).parent).lchild == erased_node)
+			{
+				get_node(get_node(erased_node).parent).lchild = pnode;
+			}
+			else
+			{
+				get_node(get_node(erased_node).parent).rchild = pnode;
+			}
+			get_node(pnode).parent = get_node(erased_node).parent;
 		}
 	}
 

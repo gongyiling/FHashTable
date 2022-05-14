@@ -1,8 +1,16 @@
 #include "fhash_table.h"
+#include <map>
 
 int main()
 {
 	fhash_table<int, int> h;
+	std::map<int, int> m;
+	m.erase(1);
+	for (int i = 0; i < 1000; i++)
+	{
+		h.insert(i, i);
+		h.validate();
+	}
 	h.reserve(2);
 	h.validate();
 	h.insert(1, 1);
