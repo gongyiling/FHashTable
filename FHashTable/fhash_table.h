@@ -36,7 +36,6 @@ public:
 		friend integer_t operator * (integer_t a, integer_t b) { return integer_t(a.value * b.value); }
 		friend integer_t operator / (integer_t a, integer_t b) { return integer_t(a.value / b.value); }
 	};
-	static_assert(allocator_policy::extra_entries_per_bucket100 > 0, "allocator_policy::extra_entries_per_bucket100 > 0");
 
 	struct tag_index {};
 	struct tag_node_index {};
@@ -375,7 +374,7 @@ private:
 				assert(unlinked_index == index);
 				insert_empty(d, key, value);
 
-				insert_index_no_check(compute_slot(compute_hash(key)), victim_key, victim_value);
+				insert_index_no_check(compute_slot(compute_hash(victim_key)), victim_key, victim_value);
 				return index;
 			}
 			else
