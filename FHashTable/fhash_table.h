@@ -6,8 +6,8 @@
 
 struct fhash_default_allocator_policy
 {
-	static constexpr int32_t extra_entries_per_bucket100 = 35;
-	static constexpr int32_t average_number_of_elements_per_hash_bucket = 1;
+	static constexpr int32_t extra_entries_per_bucket100 = 10;
+	static constexpr int32_t average_number_of_elements_per_hash_bucket100 = 100;
 	static constexpr int32_t min_number_of_hash_buckets = 2;
 	static constexpr int32_t min_number_of_entries = 4;
 };
@@ -239,7 +239,7 @@ public:
 
 	void reserve(int32_t expected_size)
 	{
-		if (allocatable_bucket_size() < get_number_of_hash_buckets(expected_size))
+		if (allocatable_bucket_size() < get_number_of_hash_buckets(expected_size) || expected_size > m_entries_size)
 		{
 			rehash(expected_size);
 		}
@@ -275,6 +275,18 @@ public:
 	size_t size() const
 	{
 		return m_size;
+	}
+
+	float load_factor() const
+	{
+		if (allocatable_bucket_size() > 0)
+		{
+			return float(m_size) / allocatable_bucket_size();
+		}
+		else
+		{
+			return 0.0f;
+		}
 	}
 
 private:
@@ -457,7 +469,7 @@ private:
 
 	static int32_t get_number_of_hash_buckets(int32_t expected_size)
 	{
-		return next_power_of_2(expected_size / allocator_policy::average_number_of_elements_per_hash_bucket + allocator_policy::min_number_of_hash_buckets);
+		return next_power_of_2(expected_size * 100 / allocator_policy::average_number_of_elements_per_hash_bucket100 + allocator_policy::min_number_of_hash_buckets);
 	}
 
 	void rehash(int32_t expected_size)

@@ -2,26 +2,28 @@
 #include <map>
 #include <stdlib.h>
 #include <unordered_map>
+#include <iostream>
+
 int main()
 {
 	fhash_table<int, int> h;
 	std::map<int, int> m;
 	std::unordered_map<int, int> mm;
-	for (int i = 0; i < 700; i++)
+	for (int i = 0; i < 7000; i++)
 	{
 		auto r = rand();
 		h.insert(r, i);
-		const int* pi = h.find(r);
-		assert(*pi == i);
 		h.validate();
+		std::vector<int32_t> distances = h.get_distance_stats();
+		int64_t sum = 0;
+		for (size_t i = 0; i < distances.size(); i++)
+		{
+			sum += i * distances[i];
+		}
+		float avg = float(sum) / h.size();
+		std::cout << avg << '\t' << h.load_factor() << std::endl;
 	}
-	std::vector<int32_t> distances = h.get_distance_stats();
-	int64_t sum = 0;
-	for (size_t i = 0; i < distances.size(); i++)
-	{
-		sum += i * distances[i];
-	}
-	float avg = float(sum) / h.size();
+
 	h.reserve(2);
 	h.validate();
 	h.insert(1, 1);
