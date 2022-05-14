@@ -11,6 +11,8 @@ int main()
 		h.insert(i, i);
 		const int* pi = h.find(i);
 		assert(*pi == i);
+		const int* pii = h.find(i + 1000);
+		assert(pii == nullptr);
 		h.validate();
 	}
 	h.reserve(2);

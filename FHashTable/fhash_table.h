@@ -8,10 +8,10 @@ template <typename key_t, typename value_t, typename hasher_t = std::hash<key_t>
 class fhash_table
 {
 public:
-	template <typename tag>
+	template <typename raw_integer_t, typename tag>
 	struct integer_t
 	{
-		int32_t value;
+		raw_integer_t value;
 		integer_t() = default;
 		constexpr explicit integer_t(int32_t v) :value(v) {}
 		integer_t operator = (integer_t other){ value = other.value; return *this; }
@@ -33,13 +33,15 @@ public:
 	struct tag_node_index {};
 	struct tag_hash {};
 
-	using index_t = integer_t<tag_index>;
-	using node_index_t = integer_t<tag_node_index>;
-	using hash_t = integer_t<tag_hash>;
+	using index_t = integer_t<int32_t, tag_index>;
+	using node_index_t = integer_t<int32_t, tag_node_index>;
+	using hash_t = integer_t<size_t, tag_hash>;
 
 	static constexpr index_t invalid_index = index_t(-1);
 
 	static constexpr node_index_t invalid_node_index = node_index_t(-2);
+
+	static constexpr int32_t min_entries_size = 4;
 
 	// node index start from -3 to -inf.
 	// index + node_index + 3 = 0.
@@ -101,10 +103,10 @@ public:
 	fhash_table(fhash_table&& other)
 	{
 		m_entries = other.m_entries; 
-		other.m_entries = nullptr;
+		other.m_entries = get_default_entries();
 
 		m_entries_size = other.m_entries_size;
-		other.m_entries_size = 0;
+		other.m_entries_size = min_entries_size;
 
 		m_size = other.m_size; 
 		other.m_size = 0;
@@ -117,7 +119,7 @@ public:
 
 	void clear()
 	{
-		if (m_entries != nullptr)
+		if (m_entries != get_default_entries())
 		{
 			for (int32_t i = 0; i < m_entries_size; i++)
 			{
@@ -128,9 +130,9 @@ public:
 				}
 			}
 			free(m_entries);
-			m_entries = nullptr;
+			m_entries = get_default_entries();
 		}
-		m_entries_size = 0;
+		m_entries_size = min_entries_size;
 		m_size = 0;
 		m_root = invalid_index;
 	}
@@ -151,20 +153,26 @@ public:
 	index_t insert(key_t key, value_t value)
 	{
 		const hash_t hash = compute_hash(key);
-		index_t index = find_index(key, compute_slot(hash));
-		if (index != invalid_index)
+		if (m_size > 0)
 		{
-			// alread exists.
-			return invalid_index;
+			index_t index = find_index(key, compute_slot(hash));
+			if (index != invalid_index)
+			{
+				// alread exists.
+				return invalid_index;
+			}
 		}
 		try_grow();
-		index = insert_index_no_check(compute_slot(hash), key, value);
-		m_size++;
+		const index_t index = insert_index_no_check(compute_slot(hash), key, value);
 		return index;
 	}
 
 	bool remove(key_t key)
 	{
+		if (m_size == 0)
+		{
+			return false;
+		}
 		index_t index = find_index(key, compute_slot(compute_hash(key)));
 		if (index != invalid_index)
 		{
@@ -180,7 +188,7 @@ public:
 
 	void validate() const
 	{
-		if (m_entries != nullptr)
+		if (m_entries != get_default_entries())
 		{
 			std::vector<bool> visited;
 			visited.resize(m_entries_size);
@@ -227,7 +235,7 @@ public:
 
 	void reserve(int32_t expected_size)
 	{
-		if (expected_size > m_entries_size / entries_per_bucket)
+		if (expected_size > get_alloctable_entries_size() / entries_per_bucket)
 		{
 			rehash(expected_size);
 		}
@@ -268,8 +276,8 @@ private:
 
 	void insert_empty(data& d, key_t key, value_t value)
 	{
-		d.key = key;
-		d.value = value;
+		new (&d.key) key_t(key);
+		new (&d.value) value_t(value);
 		d.next = invalid_index;
 		d.prev = invalid_index;
 	}
@@ -298,8 +306,8 @@ private:
 		p.next = new_index;
 		t.prev = prev;
 		t.next = invalid_index;
-		t.key = key;
-		t.value = value;
+		new (&t.key) key_t(key);
+		new (&t.value) value_t(value);
 		return new_index;
 	}
 
@@ -317,18 +325,20 @@ private:
 
 				const index_t unlinked_index = unlink_index(index);
 				assert(unlinked_index == index);
-				m_size--;
 				insert_empty(d, key, value);
-				insert(victim_key, victim_value);
+
+				insert_index_no_check(compute_slot(compute_hash(key)), victim_key, victim_value);
 				return index;
 			}
 			else
 			{
+				m_size++;
 				return insert_tail(index, key, value);
 			}
 		}
 		else
 		{
+			m_size++;
 			remove_node(index);
 			insert_empty(d, key, value);
 			return index;
@@ -359,8 +369,8 @@ private:
 				const index_t unlinked_index = unlink_index(next_index);
 				assert(unlinked_index == next_index);
 
-				d.key = next.key;
-				d.value = next.value;
+				d.key = std::move(next.key);
+				d.value = std::move(next.value);
 				
 				index = unlinked_index;
 			}
@@ -371,15 +381,15 @@ private:
 	void remove_index(index_t index)
 	{
 		index = unlink_index(index);
+		entry& e = get_entry(index);
+		assert(e.is_data());
+		e.d.key.~key_t();
+		e.d.value.~value_t();
 		add_node(index);
 	}
 
 	index_t find_index(key_t key, index_t index) const
 	{
-		if (m_size == 0)
-		{
-			return invalid_index;
-		}
 		const entry* e = &get_entry(index);
 		if (!e->is_data())
 		{
@@ -391,7 +401,7 @@ private:
 
 	void try_grow()
 	{
-		if (m_size + 1 >= m_entries_size)
+		if (m_size + 1 >= get_alloctable_entries_size())
 		{
 			rehash(m_size + 1);
 		}
@@ -400,8 +410,10 @@ private:
 	void rehash(int32_t expected_size)
 	{
 		fhash_table old_table(std::move(*this));
+		m_entries_size = std::max(expected_size * entries_per_bucket, min_entries_size);
+		// rehash shoudn't throw any data.
+		m_entries_size = std::max(m_entries_size, m_size);
 
-		m_entries_size = std::max(expected_size * entries_per_bucket, 4);
 		m_entries = (entry*)malloc(m_entries_size * sizeof(entry));
 
 		// build the tree.
@@ -409,7 +421,7 @@ private:
 		get_node(m_root).parent = invalid_node_index;
 
 		// now insert old data to new table.
-		if (old_table.m_entries != nullptr)
+		if (old_table.m_entries != get_default_entries())
 		{
 			for (int32_t i = 0; i < old_table.m_entries_size; i++)
 			{
@@ -674,10 +686,34 @@ private:
 		return m_entries_size / entries_per_bucket;
 	}
 
+	struct default_entries_initializer
+	{
+		entry entries[min_entries_size];
+		default_entries_initializer()
+		{
+			for (int i = 0; i < min_entries_size; i++)
+			{
+				node& n = entries[i].n;
+				n.lchild = n.rchild = n.parent = invalid_node_index;
+			}
+		}
+	};
+
+	static entry* get_default_entries()
+	{
+		static default_entries_initializer default_entries;
+		return default_entries.entries;
+	}
+
+	int32_t get_alloctable_entries_size() const
+	{
+		return m_entries == get_default_entries() ? 0 : m_entries_size;
+	}
+
 private:
-	entry* m_entries = nullptr;
+	entry* m_entries = get_default_entries();
 	hasher_t m_hasher;
-	int32_t m_entries_size = 0;
+	int32_t m_entries_size = min_entries_size;
 	int32_t m_size = 0;
 	index_t m_root = invalid_index;
 };
