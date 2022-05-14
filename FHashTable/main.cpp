@@ -1,13 +1,13 @@
 #include "fhash_table.h"
 #include <map>
 #include <stdlib.h>
-
+#include <unordered_map>
 int main()
 {
 	fhash_table<int, int> h;
 	std::map<int, int> m;
-	m.erase(1);
-	for (int i = 0; i < 1000; i++)
+	std::unordered_map<int, int> mm;
+	for (int i = 0; i < 700; i++)
 	{
 		auto r = rand();
 		h.insert(r, i);
@@ -15,7 +15,13 @@ int main()
 		assert(*pi == i);
 		h.validate();
 	}
-	std::vector<int32_t> distance = h.get_distance_stats();
+	std::vector<int32_t> distances = h.get_distance_stats();
+	int64_t sum = 0;
+	for (size_t i = 0; i < distances.size(); i++)
+	{
+		sum += i * distances[i];
+	}
+	float avg = float(sum) / h.size();
 	h.reserve(2);
 	h.validate();
 	h.insert(1, 1);

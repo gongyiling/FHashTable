@@ -4,7 +4,15 @@
 #include <memory>
 #include <vector>
 
-template <typename key_t, typename value_t, typename hasher_t = std::hash<key_t>, int32_t entries_per_bucket = 2>
+struct fhash_default_allocator_policy
+{
+	static constexpr int32_t extra_entries_per_bucket100 = 35;
+	static constexpr int32_t average_number_of_elements_per_hash_bucket = 1;
+	static constexpr int32_t min_number_of_hash_buckets = 1;
+	static constexpr int32_t min_number_of_entries = 4;
+};
+
+template <typename key_t, typename value_t, typename hasher_t = std::hash<key_t>, typename allocator_policy = fhash_default_allocator_policy>
 class fhash_table
 {
 public:
@@ -28,6 +36,7 @@ public:
 		friend integer_t operator * (integer_t a, integer_t b) { return integer_t(a.value * b.value); }
 		friend integer_t operator / (integer_t a, integer_t b) { return integer_t(a.value / b.value); }
 	};
+	static_assert(allocator_policy::extra_entries_per_bucket100 > 0, "allocator_policy::extra_entries_per_bucket100 > 0");
 
 	struct tag_index {};
 	struct tag_node_index {};
@@ -38,10 +47,16 @@ public:
 	using hash_t = integer_t<size_t, tag_hash>;
 
 	static constexpr index_t invalid_index = index_t(-1);
-
 	static constexpr node_index_t invalid_node_index = node_index_t(-2);
 
-	static constexpr int32_t min_entries_size = 4;
+	static_assert(allocator_policy::min_number_of_entries >= allocator_policy::min_number_of_hash_buckets, 
+		"allocator_policy::min_number_of_entries >= allocator_policy::min_number_of_hash_buckets");
+
+	static_assert(allocator_policy::min_number_of_hash_buckets > 0,
+		"allocator_policy::min_number_of_hash_buckets > 0");
+
+	static_assert(allocator_policy::extra_entries_per_bucket100 >= 0,
+		"allocator_policy::extra_entries_per_bucket100 >= 0");
 
 	// node index start from -3 to -inf.
 	// index + node_index + 3 = 0.
@@ -106,7 +121,10 @@ public:
 		other.m_entries = get_default_entries();
 
 		m_entries_size = other.m_entries_size;
-		other.m_entries_size = min_entries_size;
+		other.m_entries_size = allocator_policy::min_number_of_entries;
+
+		m_bucket_size_minus_one = other.m_bucket_size_minus_one;
+		other.m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
 
 		m_size = other.m_size; 
 		other.m_size = 0;
@@ -135,7 +153,8 @@ public:
 			free(m_entries);
 			m_entries = get_default_entries();
 		}
-		m_entries_size = min_entries_size;
+		m_entries_size = allocator_policy::min_number_of_entries;
+		m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
 		m_size = 0;
 		m_root = invalid_index;
 	}
@@ -163,7 +182,7 @@ public:
 				return index;
 			}
 		}
-		try_grow();
+		reserve(m_size + 1);
 		const index_t index = insert_index_no_check(compute_slot(hash), key, value);
 		return index;
 	}
@@ -220,7 +239,7 @@ public:
 
 	void reserve(int32_t expected_size)
 	{
-		if (expected_size > get_alloctable_entries_size() / entries_per_bucket)
+		if (bucket_size() < get_number_of_hash_buckets(expected_size))
 		{
 			rehash(expected_size);
 		}
@@ -251,6 +270,11 @@ public:
 			}
 		}
 		return distances;
+	}
+
+	size_t size() const
+	{
+		return m_size;
 	}
 
 private:
@@ -419,18 +443,31 @@ private:
 		return failed_operation();
 	}
 
-	void try_grow()
+	static int32_t next_power_of_2(int32_t v)
 	{
-		if (m_size + 1 >= get_alloctable_entries_size())
-		{
-			rehash(m_size + 1);
-		}
+		v--;
+		v |= v >> 1;
+		v |= v >> 2;
+		v |= v >> 4;
+		v |= v >> 8;
+		v |= v >> 16;
+		v++;
+		return v;
+	}
+
+	static int32_t get_number_of_hash_buckets(int32_t expected_size)
+	{
+		return next_power_of_2(expected_size / allocator_policy::average_number_of_elements_per_hash_bucket + allocator_policy::min_number_of_hash_buckets);
 	}
 
 	void rehash(int32_t expected_size)
 	{
 		fhash_table old_table(std::move(*this));
-		m_entries_size = std::max(expected_size * entries_per_bucket, min_entries_size);
+
+		const int32_t bucket_size = get_number_of_hash_buckets(expected_size);
+		m_bucket_size_minus_one = bucket_size - 1;
+
+		m_entries_size = std::max(bucket_size + bucket_size * allocator_policy::extra_entries_per_bucket100 / 100, expected_size);
 		// rehash shoudn't throw any data.
 		m_entries_size = std::max(m_entries_size, m_size);
 
@@ -446,7 +483,16 @@ private:
 			for (int32_t i = 0; i < old_table.m_entries_size; i++)
 			{
 				entry& e = old_table.get_entry(index_t(i));
-				if (e.is_data())
+				if (e.is_data() && e.d.prev == invalid_index)
+				{
+					insert_index_no_check(compute_slot(compute_hash(e.d.key)), e.d.key, e.d.value);
+				}
+			}
+
+			for (int32_t i = 0; i < old_table.m_entries_size; i++)
+			{
+				entry& e = old_table.get_entry(index_t(i));
+				if (e.is_data() && e.d.prev != invalid_index)
 				{
 					insert_index_no_check(compute_slot(compute_hash(e.d.key)), e.d.key, e.d.value);
 				}
@@ -703,15 +749,15 @@ private:
 
 	int32_t bucket_size() const
 	{
-		return m_entries_size / entries_per_bucket;
+		return m_bucket_size_minus_one + 1;
 	}
 
 	struct default_entries_initializer
 	{
-		entry entries[min_entries_size];
+		entry entries[allocator_policy::min_number_of_entries];
 		default_entries_initializer()
 		{
-			for (int i = 0; i < min_entries_size; i++)
+			for (int i = 0; i < allocator_policy::min_number_of_entries; i++)
 			{
 				node& n = entries[i].n;
 				n.lchild = n.rchild = n.parent = invalid_node_index;
@@ -733,7 +779,8 @@ private:
 private:
 	entry* m_entries = get_default_entries();
 	hasher_t m_hasher;
-	int32_t m_entries_size = min_entries_size;
+	int32_t m_entries_size = allocator_policy::min_number_of_entries;
+	int32_t m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
 	int32_t m_size = 0;
 	index_t m_root = invalid_index;
 };
