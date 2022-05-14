@@ -239,7 +239,7 @@ public:
 
 	void reserve(int32_t expected_size)
 	{
-		if (bucket_size() < get_number_of_hash_buckets(expected_size))
+		if (allocatable_bucket_size() < get_number_of_hash_buckets(expected_size))
 		{
 			rehash(expected_size);
 		}
@@ -747,9 +747,9 @@ private:
 		n.parent = index_to_node_index(insert_index);
 	}
 
-	int32_t bucket_size() const
+	int32_t allocatable_bucket_size() const
 	{
-		return m_bucket_size_minus_one + 1;
+		return m_entries == get_default_entries() ? 0: m_bucket_size_minus_one + 1;
 	}
 
 	struct default_entries_initializer
@@ -769,11 +769,6 @@ private:
 	{
 		static default_entries_initializer default_entries;
 		return default_entries.entries;
-	}
-
-	int32_t get_alloctable_entries_size() const
-	{
-		return m_entries == get_default_entries() ? 0 : m_entries_size;
 	}
 
 private:
