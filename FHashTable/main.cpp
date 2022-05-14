@@ -5,7 +5,9 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_set>
+#include <chrono>
 
+template <bool remove_duplicated>
 std::vector<int32_t> gen_random_data(int32_t N)
 {
 	std::vector<int32_t> data;
@@ -14,7 +16,14 @@ std::vector<int32_t> gen_random_data(int32_t N)
 	for (int32_t i = 0; i < N; i++)
 	{
 		int32_t r = rand();
-		if (numbers.insert(r).second)
+		if (remove_duplicated)
+		{
+			if (numbers.insert(r).second)
+			{
+				data.push_back(r);
+			}
+		}
+		else
 		{
 			data.push_back(r);
 		}
@@ -53,15 +62,28 @@ void functional_test()
 	}
 	{
 		fhash_table<int32_t, int32_t> h;
-		std::vector<int32_t> data = gen_random_data(1000);
+		std::vector<int32_t> data = gen_random_data<true>(1000);
 		for (size_t i = 0; i < data.size(); i++)
 		{
 			int32_t d = data[i];
-			h.insert(d, i);
+			h.insert(d, int32_t(i));
 			assert(h.find(d) != nullptr);
 			h.validate();
 		}
-
+		std::vector<int32_t> distances = h.get_distance_stats();
+		int64_t sum = 0;
+		for (size_t i = 0; i < distances.size(); i++)
+		{
+			sum += distances[i] * i;
+		}
+		int64_t sum10 = 0;
+		for (size_t i = 0; i < 10; i++)
+		{
+			sum10 += distances[i];
+		}
+		float avg = float(sum) / h.size();
+		double load_factor = h.load_factor();
+		float factor10 = float(sum10) / h.size();
 		for (size_t i = 0; i < data.size(); i++)
 		{
 			int32_t d = data[i];
@@ -73,34 +95,67 @@ void functional_test()
 		for (size_t i = 0; i < data.size(); i++)
 		{
 			assert(h.remove(data[i]));
+			assert(h.find(data[i]) == nullptr);
 			h.validate();
 		}
 	}
 }
 
+void perf_test()
+{
+	for (int32_t i = 4; i < 25; i++)
+	{
+		const int32_t N = 1 << i;
+		std::cout << "N = " << N << std::endl;
+		std::vector<int32_t> data = gen_random_data<false>(N);
+		{
+			std::unordered_map<int64_t, int64_t> m;
+			for (int32_t i : data)
+			{
+				m.emplace(i, i);
+			}
+
+			int64_t sum = 0;
+			auto start = std::chrono::high_resolution_clock::now();
+			for (int32_t i = 0; i < 100000000 / N; i++)
+			{
+				for (int32_t i : data)
+				{
+					sum += m.find(i)->second;
+				}
+			}
+			auto end = std::chrono::high_resolution_clock::now();
+			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+			std::cout << "std::unordered_map, elapsed milliseconds: " << elapsed << " sum: " << sum << std::endl;
+		}
+
+		{
+			fhash_table<int64_t, int64_t> m;
+			for (int32_t i : data)
+			{
+				m.insert(i, i);
+			}
+
+			auto start = std::chrono::high_resolution_clock::now();
+			int64_t sum = 0;
+			for (int32_t i = 0; i < 100000000 / N; i++)
+			{
+				for (int32_t i : data)
+				{
+					sum += *m.find(i);
+				}
+			}
+			auto end = std::chrono::high_resolution_clock::now();
+			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+			std::cout << "std::fhash_table, elapsed milliseconds: " << elapsed << " sum: " << sum << " load_factor: " << m.load_factor() << std::endl;
+		}
+		break;
+	}
+}
+
 int main()
 {
-	fhash_table<int, int> h;
-
 	functional_test();
-
-	h.reserve(2);
-	h.validate();
-	h.insert(1, 1);
-	h.validate();
-	if (true)
-	{
-		h.insert(2, 1);
-		h.validate();
-		h.insert(3, 1);
-		h.validate();
-		h.insert(4, 1);
-		h.validate();
-		h.insert(5, 1);
-		h.validate();
-	}
-	const int* p = h.find(1);
-	h.remove(1);
-	h.validate();
+	perf_test();
 	return 0;
 }

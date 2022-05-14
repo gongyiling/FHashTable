@@ -6,8 +6,8 @@
 
 struct fhash_default_allocator_policy
 {
-	static constexpr int32_t extra_entries_per_bucket100 = 10;
-	static constexpr int32_t average_number_of_elements_per_hash_bucket100 = 100;
+	static constexpr int32_t average_number_of_elements_per_bucket100 = 120;
+	static constexpr int32_t extra_entries_per_bucket100 = std::max(average_number_of_elements_per_bucket100 - 100, 0);
 	static constexpr int32_t min_number_of_hash_buckets = 2;
 	static constexpr int32_t min_number_of_entries = 4;
 };
@@ -21,7 +21,7 @@ public:
 	{
 		raw_integer_t value;
 		integer_t() = default;
-		constexpr explicit integer_t(int32_t v) :value(v) {}
+		constexpr explicit integer_t(raw_integer_t v) :value(v) {}
 		integer_t operator = (integer_t other){ value = other.value; return *this; }
 
 		bool operator < (integer_t other) const{return value < other.value;}
@@ -257,9 +257,11 @@ public:
 			const entry* e = &get_entry(index);
 			if (e->is_data() && e->d.prev == invalid_index)
 			{	
+				index_t prev_index = index;
 				for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
 				{
-					const uint32_t distance = std::abs(index.value - i);
+					const uint32_t distance = std::abs((index - prev_index).value);
+					prev_index = index;
 					if (distances.size() <= distance)
 					{
 						distances.resize(distance + 1);
@@ -276,11 +278,11 @@ public:
 		return m_size;
 	}
 
-	float load_factor() const
+	double load_factor() const
 	{
 		if (allocatable_bucket_size() > 0)
 		{
-			return float(m_size) / allocatable_bucket_size();
+			return double(m_size) / allocatable_bucket_size();
 		}
 		else
 		{
@@ -367,8 +369,9 @@ private:
 			if (d.prev != invalid_index)
 			{
 				// we are list from other slot.
-				key_t victim_key = d.key;
-				value_t victim_value = d.value;
+				key_t victim_key = std::move(d.key);
+				value_t victim_value = std::move(d.value);
+				d.~data();
 
 				const index_t unlinked_index = unlink_index(index);
 				assert(unlinked_index == index);
@@ -468,7 +471,7 @@ private:
 
 	static int32_t get_number_of_hash_buckets(int32_t expected_size)
 	{
-		return next_power_of_2(expected_size * 100 / allocator_policy::average_number_of_elements_per_hash_bucket100 + allocator_policy::min_number_of_hash_buckets);
+		return next_power_of_2(expected_size * 100 / allocator_policy::average_number_of_elements_per_bucket100 + allocator_policy::min_number_of_hash_buckets);
 	}
 
 	void rehash(int32_t expected_size)
