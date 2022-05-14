@@ -291,6 +291,8 @@ private:
 		p.next = new_index;
 		t.prev = prev;
 		t.next = invalid_index;
+		t.key = key;
+		t.value = value;
 		return new_index;
 	}
 
@@ -539,6 +541,7 @@ private:
 		const node_index_t erased_node_index = index_to_node_index(erased_index);
 
 		// copied from std::_Tree_val::_Extract
+		// TODO optimize these messes.
 		node_index_t erased_node = erased_node_index;
 		node_index_t fixnode;
 		node_index_t fixnode_parent;

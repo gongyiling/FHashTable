@@ -9,6 +9,8 @@ int main()
 	for (int i = 0; i < 1000; i++)
 	{
 		h.insert(i, i);
+		const int* pi = h.find(i);
+		assert(*pi == i);
 		h.validate();
 	}
 	h.reserve(2);
