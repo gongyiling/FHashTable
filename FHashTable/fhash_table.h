@@ -139,15 +139,10 @@ public:
 
 	const value_t* find(key_t key) const
 	{
-		index_t index =  find_index(key, compute_slot(compute_hash(key)));
-		if (index == invalid_index)
-		{
-			return nullptr;
-		}
-		else
-		{
-			return &get_entry(index).d.value;
-		}
+		return find_index(key, compute_slot(compute_hash(key)), 
+			[this](index_t index) {return (const value_t*)&get_entry(index).d.value; },
+			[]() {return (const value_t*)nullptr; }
+			);
 	}
 
 	index_t insert(key_t key, value_t value)
@@ -155,8 +150,10 @@ public:
 		const hash_t hash = compute_hash(key);
 		if (m_size > 0)
 		{
-			index_t index = find_index(key, compute_slot(hash));
-			if (index != invalid_index)
+			const bool found = find_index(key, compute_slot(hash), 
+				[](index_t index) {return true; },
+				[]() {return false; });
+			if (found)
 			{
 				// alread exists.
 				return invalid_index;
@@ -169,21 +166,9 @@ public:
 
 	bool remove(key_t key)
 	{
-		if (m_size == 0)
-		{
-			return false;
-		}
-		index_t index = find_index(key, compute_slot(compute_hash(key)));
-		if (index != invalid_index)
-		{
-			m_size--;
-			remove_index(index);
-			return true;
-		}
-		else
-		{
-			return false;
-		}
+		return find_index(key, compute_slot(compute_hash(key)), 
+			[this](index_t index) {remove_index(index); return true; },
+			[]() {return false; });
 	}
 
 	void validate() const
@@ -386,17 +371,25 @@ private:
 		e.d.key.~key_t();
 		e.d.value.~value_t();
 		add_node(index);
+		m_size--;
 	}
 
-	index_t find_index(key_t key, index_t index) const
+	template <typename success_operation_t, typename failed_operation_t>
+	decltype(auto) find_index(key_t key, index_t index, success_operation_t success_operation, failed_operation_t failed_operation) const
 	{
 		const entry* e = &get_entry(index);
 		if (!e->is_data())
 		{
-			return invalid_index;
+			return failed_operation();
 		}
-		for (; e->d.key != key && index != invalid_index; index = e->d.next, e = &get_entry(index));
-		return index;
+		for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
+		{
+			if (e->d.key == key)
+			{
+				return success_operation(index);
+			}
+		}
+		return failed_operation();
 	}
 
 	void try_grow()
