@@ -31,9 +31,11 @@ public:
 
 	struct tag_index {};
 	struct tag_node_index {};
+	struct tag_hash {};
 
 	using index_t = integer_t<tag_index>;
 	using node_index_t = integer_t<tag_node_index>;
+	using hash_t = integer_t<tag_hash>;
 
 	static constexpr index_t invalid_index = index_t(-1);
 
@@ -135,7 +137,7 @@ public:
 
 	const value_t* find(key_t key) const
 	{
-		index_t index =  find_index(key);
+		index_t index =  find_index(key, compute_slot(compute_hash(key)));
 		if (index == invalid_index)
 		{
 			return nullptr;
@@ -148,22 +150,22 @@ public:
 
 	index_t insert(key_t key, value_t value)
 	{
-		index_t index = find_index(key);
+		const hash_t hash = compute_hash(key);
+		index_t index = find_index(key, compute_slot(hash));
 		if (index != invalid_index)
 		{
 			// alread exists.
 			return invalid_index;
 		}
 		try_grow();
-		index = compute_hash(key);
-		index = insert_index(index, key, value);
+		index = insert_index_no_check(compute_slot(hash), key, value);
 		m_size++;
 		return index;
 	}
 
 	bool remove(key_t key)
 	{
-		index_t index = find_index(key);
+		index_t index = find_index(key, compute_slot(compute_hash(key)));
 		if (index != invalid_index)
 		{
 			m_size--;
@@ -254,9 +256,14 @@ private:
 		return size;
 	}
 
-	index_t compute_hash(key_t key) const
+	hash_t compute_hash(key_t key) const
 	{
-		return index_t(m_hasher(key) % bucket_size());
+		return hash_t(m_hasher(key));
+	}
+
+	index_t compute_slot(hash_t h) const
+	{
+		return index_t(h.value % bucket_size());
 	}
 
 	void insert_empty(data& d, key_t key, value_t value)
@@ -296,7 +303,7 @@ private:
 		return new_index;
 	}
 
-	index_t insert_index(index_t index, key_t key, value_t value)
+	index_t insert_index_no_check(index_t index, key_t key, value_t value)
 	{
 		entry& e = get_entry(index);
 		data& d = e.d;
@@ -367,13 +374,12 @@ private:
 		add_node(index);
 	}
 
-	index_t find_index(key_t key) const
+	index_t find_index(key_t key, index_t index) const
 	{
 		if (m_size == 0)
 		{
 			return invalid_index;
 		}
-		index_t index = compute_hash(key);
 		const entry* e = &get_entry(index);
 		if (!e->is_data())
 		{
@@ -410,7 +416,7 @@ private:
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data())
 				{
-					insert(e.d.key, e.d.value);
+					insert_index_no_check(compute_slot(compute_hash(e.d.key)), e.d.key, e.d.value);
 				}
 			}
 		}
