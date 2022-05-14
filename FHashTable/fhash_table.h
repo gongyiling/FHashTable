@@ -110,6 +110,9 @@ public:
 
 		m_size = other.m_size; 
 		other.m_size = 0;
+
+		m_root = other.m_root;
+		other.m_root = invalid_index;
 	}
 
 	~fhash_table()
@@ -203,10 +206,6 @@ public:
 						}
 					}
 					size++;
-				}
-				else
-				{
-
 				}
 			}
 
