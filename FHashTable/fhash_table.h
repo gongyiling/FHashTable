@@ -8,7 +8,7 @@ struct fhash_default_allocator_policy
 {
 	static constexpr int32_t extra_entries_per_bucket100 = 35;
 	static constexpr int32_t average_number_of_elements_per_hash_bucket = 1;
-	static constexpr int32_t min_number_of_hash_buckets = 1;
+	static constexpr int32_t min_number_of_hash_buckets = 2;
 	static constexpr int32_t min_number_of_entries = 4;
 };
 
@@ -307,7 +307,7 @@ private:
 
 	index_t compute_slot(hash_t h) const
 	{
-		return index_t(h.value % bucket_size());
+		return index_t(h.value & m_bucket_size_minus_one);
 	}
 
 	void insert_empty(data& d, key_t key, value_t value)
