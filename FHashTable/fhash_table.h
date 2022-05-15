@@ -442,14 +442,20 @@ private:
 		{
 			return failed_operation();
 		}
-		for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
+
+		// using goto is the most efficient way.
+loop_start:
+		if (e->d.key == key)
 		{
-			if (e->d.key == key)
-			{
-				return success_operation(index);
-			}
+			return success_operation(index);
 		}
-		return failed_operation();
+		index = e->d.next; 
+		if (index == invalid_index)
+		{
+			return failed_operation();
+		}
+		e = &get_entry(index);
+		goto loop_start;
 	}
 
 	static int32_t next_power_of_2(int32_t v)
