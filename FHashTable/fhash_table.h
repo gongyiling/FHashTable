@@ -7,7 +7,6 @@
 struct fhash_default_allocator_policy
 {
 	static constexpr int32_t average_number_of_elements_per_bucket100 = 120;
-	static constexpr int32_t extra_entries_per_bucket100 = std::max(average_number_of_elements_per_bucket100 - 100, 0);
 	static constexpr int32_t min_number_of_hash_buckets = 2;
 	static constexpr int32_t min_number_of_entries = 4;
 };
@@ -53,9 +52,6 @@ public:
 
 	static_assert(allocator_policy::min_number_of_hash_buckets > 0,
 		"allocator_policy::min_number_of_hash_buckets > 0");
-
-	static_assert(allocator_policy::extra_entries_per_bucket100 >= 0,
-		"allocator_policy::extra_entries_per_bucket100 >= 0");
 
 	// node index start from -3 to -inf.
 	// index + node_index + 3 = 0.
@@ -333,8 +329,7 @@ private:
 
 	index_t allocate_entry(index_t index)
 	{
-		index_t last_dir;
-		index_t pos = find_node(index, last_dir);
+		index_t pos = find_min_distance_node(index);
 		assert(pos != invalid_index);
 		// remove from tree.
 		remove_node(pos);
@@ -481,7 +476,7 @@ private:
 		const int32_t bucket_size = get_number_of_hash_buckets(expected_size);
 		m_bucket_size_minus_one = bucket_size - 1;
 
-		m_entries_size = std::max(bucket_size + bucket_size * allocator_policy::extra_entries_per_bucket100 / 100, expected_size);
+		m_entries_size = std::max(bucket_size * allocator_policy::average_number_of_elements_per_bucket100 / 100, expected_size);
 		// rehash shoudn't throw any data.
 		m_entries_size = std::max(m_entries_size, m_size);
 
@@ -713,7 +708,7 @@ private:
 		}
 	}
 
-	index_t find_node(index_t index, index_t& last_dir) const
+	index_t find_insert_node(index_t index, index_t& last_dir) const
 	{
 		index_t prev = invalid_index;
 		index_t current = m_root;
@@ -739,10 +734,42 @@ private:
 		return prev;
 	}
 
+	index_t find_min_distance_node(index_t index) const
+	{
+		index_t current = m_root;
+		int32_t min_distance = INT_MAX;
+		index_t min_distance_index = invalid_index;
+		while (current != invalid_index)
+		{
+			const node& n = get_node(current);
+			if (index == current)
+			{
+				return current;
+			}
+
+			const int32_t distance = std::abs((index - current).value);
+			if (distance < min_distance)
+			{
+				min_distance_index = current;
+				min_distance = distance;
+			}
+
+			if (index < current)
+			{
+				current = node_index_to_index_check_invalid(n.lchild);
+			}
+			else
+			{
+				current = node_index_to_index_check_invalid(n.rchild);
+			}
+		}
+		return min_distance_index;
+	}
+
 	void add_node(index_t index)
 	{
 		index_t last_dir;
-		index_t insert_index = find_node(index, last_dir);
+		index_t insert_index = find_insert_node(index, last_dir);
 		if (insert_index == invalid_index)
 		{
 			assert(m_root == invalid_index);
