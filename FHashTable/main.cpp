@@ -101,11 +101,11 @@ void functional_test()
 	}
 }
 
-void perf_test()
+static _declspec(noinline) void test_std_unordered_map()
 {
-	for (int32_t i = 4; i < 25; i++)
+	for (int32_t i = 1; i < 15; i++)
 	{
-		const int32_t N = 1 << i;
+		const int32_t N = std::pow(3, i);
 		std::cout << "N = " << N << std::endl;
 		std::vector<int32_t> data = gen_random_data<false>(N);
 		{
@@ -128,7 +128,16 @@ void perf_test()
 			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 			std::cout << "std::unordered_map, elapsed milliseconds: " << elapsed << " sum: " << sum << std::endl;
 		}
+	}
+}
 
+static _declspec(noinline) void test_fhash_table()
+{
+	for (int32_t i = 1; i < 15; i++)
+	{
+		const int32_t N = std::pow(3, i);
+		std::cout << "N = " << N << std::endl;
+		std::vector<int32_t> data = gen_random_data<false>(N);
 		{
 			fhash_table<int64_t, int64_t> m;
 			for (int32_t i : data)
@@ -149,12 +158,20 @@ void perf_test()
 			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 			std::cout << "std::fhash_table, elapsed milliseconds: " << elapsed << " sum: " << sum << " load_factor: " << m.load_factor() << std::endl;
 		}
-		break;
 	}
+}
+
+static void perf_test()
+{
+	test_std_unordered_map();
+	test_fhash_table();
 }
 
 int main()
 {
+	fhash_table<std::string, int> hh;
+	hh.insert("ddd", 1);
+	fhash_table<std::string, int> hhh = hh;
 	functional_test();
 	perf_test();
 	return 0;

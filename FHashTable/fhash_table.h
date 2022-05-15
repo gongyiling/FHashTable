@@ -79,10 +79,44 @@ public:
 
 	struct data
 	{
+		data() {}
+		data(key_t, value_t) {}
 		index_t prev;
 		index_t next;
-		key_t key;
-		value_t value;
+		std::aligned_storage_t<sizeof(key_t), alignof(key_t)> key;
+		std::aligned_storage_t<sizeof(value_t), alignof(value_t)> value;
+
+		void construct(key_t k, value_t v)
+		{
+			new (&key) key_t(k);
+			new (&value) value_t(v);
+		}
+
+		void destruct()
+		{
+			get_key().~key_t();
+			get_value().~value_t();
+		}
+
+		key_t& get_key()
+		{
+			return reinterpret_cast<key_t&>(key);
+		}
+
+		value_t& get_value()
+		{
+			return reinterpret_cast<value_t&>(value);
+		}
+
+		const key_t& get_key() const
+		{
+			return reinterpret_cast<const key_t&>(key);
+		}
+
+		const value_t& get_value() const
+		{
+			return reinterpret_cast<const value_t&>(value);
+		}
 	};
 
 	struct node
@@ -112,7 +146,36 @@ public:
 
 	fhash_table(fhash_table&& other)
 	{
-		m_entries = other.m_entries; 
+		move_table(std::move(other));
+	}
+
+	fhash_table(const fhash_table& other)
+	{
+		copy_table(other);
+	}
+
+	fhash_table& operator = (fhash_table&& other)
+	{
+		clear();
+		move_table(std::move(other));
+		return *this;
+	}
+
+	fhash_table& operator = (const fhash_table& other)
+	{
+		clear();
+		copy_table(other);
+		return *this;
+	}
+
+	~fhash_table()
+	{
+		clear();
+	}
+
+	void move_table(fhash_table&& other)
+	{
+		m_entries = other.m_entries;
 		other.m_entries = get_default_entries();
 
 		m_entries_size = other.m_entries_size;
@@ -121,16 +184,38 @@ public:
 		m_bucket_size_minus_one = other.m_bucket_size_minus_one;
 		other.m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
 
-		m_size = other.m_size; 
+		m_size = other.m_size;
 		other.m_size = 0;
 
 		m_root = other.m_root;
 		other.m_root = invalid_index;
 	}
 
-	~fhash_table()
+	void copy_table(const fhash_table& other)
 	{
-		clear();
+		reserve((int32_t)other.size());
+
+		// now insert old data to new table.
+		if (other.m_entries != get_default_entries())
+		{
+			for (int32_t i = 0; i < other.m_entries_size; i++)
+			{
+				const entry& e = other.get_entry(index_t(i));
+				if (e.is_data() && e.d.prev == invalid_index)
+				{
+					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
+				}
+			}
+
+			for (int32_t i = 0; i < other.m_entries_size; i++)
+			{
+				const entry& e = other.get_entry(index_t(i));
+				if (e.is_data() && e.d.prev != invalid_index)
+				{
+					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
+				}
+			}
+		}
 	}
 
 	void clear()
@@ -173,7 +258,7 @@ public:
 			if (index != invalid_index)
 			{
 				// alread exists, replace it.
-				get_entry(index).d.value = value;
+				get_entry(index).d.get_value() = value;
 				return index;
 			}
 		}
@@ -321,8 +406,7 @@ private:
 
 	void insert_empty(data& d, key_t key, value_t value)
 	{
-		new (&d.key) key_t(key);
-		new (&d.value) value_t(value);
+		d.construct(key, value);
 		d.next = invalid_index;
 		d.prev = invalid_index;
 	}
@@ -350,8 +434,7 @@ private:
 		p.next = new_index;
 		t.prev = prev;
 		t.next = invalid_index;
-		new (&t.key) key_t(key);
-		new (&t.value) value_t(value);
+		t.construct(key, value);
 		return new_index;
 	}
 
@@ -364,8 +447,8 @@ private:
 			if (d.prev != invalid_index)
 			{
 				// we are list from other slot.
-				key_t victim_key = std::move(d.key);
-				value_t victim_value = std::move(d.value);
+				key_t victim_key = std::move(d.get_key());
+				value_t victim_value = std::move(d.get_value());
 				d.~data();
 
 				const index_t unlinked_index = unlink_index(index);
@@ -428,8 +511,7 @@ private:
 		index = unlink_index(index);
 		entry& e = get_entry(index);
 		assert(e.is_data());
-		e.d.key.~key_t();
-		e.d.value.~value_t();
+		e.d.destruct();
 		add_node(index);
 		m_size--;
 	}
@@ -445,7 +527,7 @@ private:
 
 		// using goto is the most efficient way.
 loop_start:
-		if (e->d.key == key)
+		if (e->d.get_key() == key)
 		{
 			return success_operation(index);
 		}
@@ -500,7 +582,7 @@ loop_start:
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
 				{
-					insert_index_no_check(compute_slot(compute_hash(e.d.key)), e.d.key, e.d.value);
+					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
 				}
 			}
 
@@ -509,7 +591,7 @@ loop_start:
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)
 				{
-					insert_index_no_check(compute_slot(compute_hash(e.d.key)), e.d.key, e.d.value);
+					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
 				}
 			}
 		}
@@ -801,21 +883,25 @@ private:
 
 	struct default_entries_initializer
 	{
-		entry entries[allocator_policy::min_number_of_entries];
+		std::aligned_storage_t<sizeof(entry), alignof(entry)> entries[allocator_policy::min_number_of_entries];
 		default_entries_initializer()
 		{
 			for (int i = 0; i < allocator_policy::min_number_of_entries; i++)
 			{
-				node& n = entries[i].n;
+				node& n = get_entries()[i].n;
 				n.lchild = n.rchild = n.parent = invalid_node_index;
 			}
+		}
+		entry* get_entries()
+		{
+			return reinterpret_cast<entry*>(entries);
 		}
 	};
 
 	static entry* get_default_entries()
 	{
 		static default_entries_initializer default_entries;
-		return default_entries.entries;
+		return default_entries.get_entries();
 	}
 
 private:
