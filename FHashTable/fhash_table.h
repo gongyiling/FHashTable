@@ -23,7 +23,7 @@ public:
 		constexpr explicit integer_t(raw_integer_t v) :value(v) {}
 		integer_t operator = (integer_t other){ value = other.value; return *this; }
 
-		bool operator < (integer_t other) const{return value < other.value;}
+		bool operator < (integer_t other) const {return value < other.value;}
 		bool operator <= (integer_t other) const { return value <= other.value; }
 		bool operator == (integer_t other) const { return value == other.value; }
 		bool operator != (integer_t other) const { return value != other.value; }
@@ -151,10 +151,8 @@ public:
 		typedef typename std::conditional<bConst, const key_t, key_t>::type it_key_t;
 		typedef typename std::conditional<bConst, const value_t, value_t>::type it_value_t;
 
-		base_iterator() = default;
-
 		base_iterator(table_t& table, index_t index)
-			: m_table(table)
+			: m_table(&table)
 			, m_index(index)
 		{
 			skip_empty();
@@ -186,19 +184,19 @@ public:
 
 		void skip_empty()
 		{
-			for (; *this && !m_table.get_entry(m_index).is_data(); m_index++);
+			for (; *this && !m_table->get_entry(m_index).is_data(); m_index++);
 		}
 
-		it_key_t& key() const { return m_table.get_entry(m_index).d.get_key(); }
+		it_key_t& key() const { return m_table->get_entry(m_index).d.get_key(); }
 
-		it_value_t& value() const { return m_table.get_entry(m_index).d.get_value(); }
+		it_value_t& value() const { return m_table->get_entry(m_index).d.get_value(); }
 
 		std::pair<const key_t&, it_value_t&> operator* () const { return std::pair<const key_t&, it_value_t&>(key(), value()); }
 
 		/** conversion to "bool" returning true if the iterator is valid. */
 		explicit operator bool() const
 		{
-			return m_index < index_t(m_table.capacity());
+			return m_index < index_t(m_table->capacity());
 		}
 
 		/** inverse of the "bool" operator */
@@ -209,7 +207,7 @@ public:
 
 	private:
 		friend class fhash_table;
-		table_t& m_table;
+		table_t* m_table = nullptr;
 		index_t m_index = index_t(0);
 	};
 
@@ -221,6 +219,7 @@ public:
 		using super = base_iterator<false>;
 	public:
 		using super::super;
+		iterator& operator=(const iterator&) = default;
 	};
 
 	class const_iterator : public base_iterator<true>
@@ -228,6 +227,7 @@ public:
 		using super = base_iterator<true>;
 	public:
 		using super::super;
+		const_iterator& operator=(const const_iterator&) = default;
 	};
 
 	iterator      begin() { return make_iterator(0); }
@@ -376,11 +376,9 @@ public:
 		return make_iterator(index);
 	}
 
-	bool erase(key_t key)
+	iterator erase(key_t key)
 	{
-		return find_index(key, compute_slot(compute_hash(key)), 
-			[this](index_t index) {remove_index(index); return true; },
-			[]() {return false; });
+		return erase(find(key));
 	}
 
 	void validate() const
@@ -487,9 +485,15 @@ public:
 
 	iterator erase(iterator it)
 	{
-		remove_index(it.m_index);
-		it.m_index--;
-		return it;
+		if (it == end())
+		{
+			return end();
+		}
+		else
+		{
+			remove_index(it.m_index);
+			return make_iterator(it.m_index);
+		}
 	}
 
 private:

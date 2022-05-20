@@ -57,8 +57,11 @@ void functional_test()
 			Sum += pr.second;
 		}
 		assert(Sum == 1);
-		assert(!h.erase(0));
-		assert(h.erase(1));
+		assert(h.erase(0) == h.end());
+
+		auto erased_it = h.erase(1);
+		auto end_it = h.end();
+		assert(erased_it == end_it);
 		h.validate();
 	}
 	{
@@ -67,7 +70,7 @@ void functional_test()
 		{
 			h.insert(i, i);
 			assert(h.find(i) != h.end());
-			assert(h.erase(i));
+			h.erase(i);
 			assert(h.find(i) == h.end());
 			h.validate();
 		}
@@ -106,9 +109,41 @@ void functional_test()
 		std::random_shuffle(data.begin(), data.end());
 		for (size_t i = 0; i < data.size(); i++)
 		{
-			assert(h.erase(data[i]));
+			h.erase(data[i]);
 			assert(h.find(data[i]) == h.end());
 			h.validate();
+		}
+	}
+
+	// random test.
+	{
+		fhash_table<int32_t, int32_t> h;
+		for (uint32_t j = 0; j < 100; j++)
+		{
+			const uint32_t N = 1000;
+			for (uint32_t i = 0; i < N; i++)
+			{
+				h.insert(rand(), i);
+			}
+
+			uint32_t deleted = 0;
+			uint32_t total = h.size();
+			for (uint32_t k = 0; k < 10; k++)
+			{
+				for (auto it = h.begin(); it != h.end();)
+				{
+					if (rand() & 1)
+					{
+						it = h.erase(it);
+						deleted++;
+					}
+					else
+					{
+						it++;
+					}
+				}
+			}
+			assert(total == h.size() + deleted);
 		}
 	}
 }
