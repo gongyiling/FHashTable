@@ -168,6 +168,11 @@ public:
 			return !(lhs == rhs);
 		}
 
+		friend bool operator<(const base_iterator& lhs, const base_iterator& rhs)
+		{
+			return lhs.m_index < rhs.m_index;
+		}
+
 		base_iterator& operator++()
 		{
 			m_index++;

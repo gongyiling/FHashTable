@@ -130,7 +130,7 @@ void functional_test()
 			uint32_t total = h.size();
 			for (uint32_t k = 0; k < 10; k++)
 			{
-				for (auto it = h.begin(); it != h.end();)
+				for (auto it = h.begin(); it < h.end();)
 				{
 					if (rand() & 1)
 					{
