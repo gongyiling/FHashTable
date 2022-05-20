@@ -144,6 +144,98 @@ public:
 		}
 	};
 
+	template <bool bConst>
+	struct base_iterator
+	{
+		typedef typename std::conditional<bConst, const fhash_table, fhash_table>::type table_t;
+		typedef typename std::conditional<bConst, const key_t, key_t>::type it_key_t;
+		typedef typename std::conditional<bConst, const value_t, value_t>::type it_value_t;
+
+		base_iterator() = default;
+
+		base_iterator(table_t& table, index_t index)
+			: m_table(table)
+			, m_index(index)
+		{
+			skip_empty();
+		}
+
+		friend bool operator==(const base_iterator& lhs, const base_iterator& rhs)
+		{
+			return lhs.m_index == rhs.m_index;
+		}
+
+		friend bool operator!=(const base_iterator& lhs, const base_iterator& rhs)
+		{
+			return !(lhs == rhs);
+		}
+
+		base_iterator& operator++()
+		{
+			m_index++;
+			skip_empty();
+			return *this;
+		}
+
+		base_iterator operator++(int)
+		{
+			base_iterator copy(*this);
+			++* this;
+			return copy;
+		}
+
+		void skip_empty()
+		{
+			for (; *this && !m_table.get_entry(m_index).is_data(); m_index++);
+		}
+
+		it_key_t& key() const { return m_table.get_entry(m_index).d.get_key(); }
+
+		it_key_t& value() const { return m_table.get_entry(m_index).d.get_value(); }
+
+		/** conversion to "bool" returning true if the iterator is valid. */
+		explicit operator bool() const
+		{
+			return m_index < index_t(m_table.capacity());
+		}
+
+		/** inverse of the "bool" operator */
+		bool operator !() const
+		{
+			return !(bool)*this;
+		}
+
+	private:
+		friend class fhash_table;
+		table_t& m_table;
+		index_t m_index = index_t(0);
+	};
+
+	template <bool>
+	friend struct base_iterator;
+
+	class iterator : public base_iterator<false>
+	{
+		using super = base_iterator<false>;
+	public:
+		using super::super;
+	};
+
+	class const_iterator : public base_iterator<true>
+	{
+		using super = base_iterator<true>;
+	public:
+		using super::super;
+	};
+
+	iterator      begin() { return make_iterator(0); }
+
+	const_iterator begin() const { return make_const_iterator(0); }
+
+	iterator      end() { return make_iterator(capacity()); }
+
+	const_iterator end() const { return make_const_iterator(capacity()); }
+
 	fhash_table() = default;
 
 	fhash_table(fhash_table&& other)
@@ -203,7 +295,8 @@ public:
 		// now insert old data to new table.
 		if (other.m_entries != get_default_entries())
 		{
-			for (int32_t i = 0; i < other.m_entries_size; i++)
+			const int32_t cap = other.capacity();
+			for (int32_t i = 0; i < cap; i++)
 			{
 				const entry& e = other.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
@@ -212,7 +305,7 @@ public:
 				}
 			}
 
-			for (int32_t i = 0; i < other.m_entries_size; i++)
+			for (int32_t i = 0; i < cap; i++)
 			{
 				const entry& e = other.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)
@@ -245,15 +338,23 @@ public:
 		m_max_index = invalid_index;
 	}
 
-	const value_t* find(key_t key) const
+	const_iterator find(key_t key) const
 	{
 		return find_index(key, compute_slot(compute_hash(key)), 
-			[this](index_t index) {return &get_entry(index).d.get_value(); },
-			[]() {return (const value_t*)nullptr; }
+			[this](index_t index) {return make_const_iterator(index); },
+			[this]() {return make_const_iterator(capacity()); }
 			);
 	}
 
-	index_t insert(key_t key, value_t value)
+	iterator find(key_t key) 
+	{
+		return find_index(key, compute_slot(compute_hash(key)),
+			[this](index_t index) {return make_iterator(index); },
+			[this]() {return make_iterator(capacity()); }
+		);
+	}
+
+	iterator insert(key_t key, value_t value)
 	{
 		const hash_t hash = compute_hash(key);
 		if (m_size > 0)
@@ -265,15 +366,15 @@ public:
 			{
 				// alread exists, replace it.
 				get_entry(index).d.get_value() = value;
-				return index;
+				return make_iterator(index);
 			}
 		}
 		reserve(m_size + 1);
 		const index_t index = insert_index_no_check(compute_slot(hash), key, value);
-		return index;
+		return make_iterator(index);
 	}
 
-	bool remove(key_t key)
+	bool erase(key_t key)
 	{
 		return find_index(key, compute_slot(compute_hash(key)), 
 			[this](index_t index) {remove_index(index); return true; },
@@ -377,12 +478,39 @@ public:
 		}
 	}
 
-	index_t capacity() const
+	int32_t capacity() const
 	{
-		return m_max_index + index_t(1);
+		return m_max_index.value + 1;
+	}
+
+	iterator erase(iterator it)
+	{
+		remove_index(it.m_index);
+		it.m_index--;
+		return it;
 	}
 
 private:
+
+	iterator make_iterator(int32_t index)
+	{
+		return iterator(*this, index_t(index));
+	}
+
+	const_iterator make_const_iterator(int32_t index)
+	{
+		return const_iterator(*this, index_t(index));
+	}
+
+	iterator make_iterator(index_t index)
+	{
+		return iterator(*this, index);
+	}
+
+	const_iterator make_const_iterator(index_t index)
+	{
+		return const_iterator(*this, index);
+	}
 
 	int32_t validate_tree(index_t index) const
 	{
@@ -602,7 +730,8 @@ loop_start:
 		// now insert old data to new table.
 		if (old_table.m_entries != get_default_entries())
 		{
-			for (int32_t i = 0; i < old_table.m_entries_size; i++)
+			const int32_t cap = old_table.capacity();
+			for (int32_t i = 0; i < cap; i++)
 			{
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
@@ -611,7 +740,7 @@ loop_start:
 				}
 			}
 
-			for (int32_t i = 0; i < old_table.m_entries_size; i++)
+			for (int32_t i = 0; i < cap; i++)
 			{
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)

@@ -35,18 +35,18 @@ void functional_test()
 {
 	{
 		fhash_table<int32_t, int32_t> h;
-		assert(h.find(0) == nullptr);
-		assert(!h.remove(0));
+		assert(h.find(0) == h.end());
+		assert(!h.erase(0));
 		h.validate();
 	}
 	{
 		fhash_table<int32_t, int32_t> h;
 		h.insert(1, 1);
 		h.validate();
-		assert(h.find(0) == nullptr);
-		assert(h.find(1) != nullptr);
-		assert(!h.remove(0));
-		assert(h.remove(1));
+		assert(h.find(0) == h.end());
+		assert(h.find(1) != h.end());
+		assert(!h.erase(0));
+		assert(h.erase(1));
 		h.validate();
 	}
 	{
@@ -54,9 +54,9 @@ void functional_test()
 		for (int32_t i = 0; i < 10; i++)
 		{
 			h.insert(i, i);
-			assert(h.find(i) != nullptr);
-			assert(h.remove(i));
-			assert(h.find(i) == nullptr);
+			assert(h.find(i) != h.end());
+			assert(h.erase(i));
+			assert(h.find(i) == h.end());
 			h.validate();
 		}
 	}
@@ -67,7 +67,7 @@ void functional_test()
 		{
 			int32_t d = data[i];
 			h.insert(d, int32_t(i));
-			assert(h.find(d) != nullptr);
+			assert(h.find(d) != h.end());
 			h.validate();
 		}
 		std::vector<int32_t> distances = h.get_distance_stats();
@@ -87,15 +87,15 @@ void functional_test()
 		for (size_t i = 0; i < data.size(); i++)
 		{
 			int32_t d = data[i];
-			const int32_t* pi = h.find(d);
+			const int32_t* pi = &(h.find(d).value());
 			assert(*pi == i);
 		}
 
 		std::random_shuffle(data.begin(), data.end());
 		for (size_t i = 0; i < data.size(); i++)
 		{
-			assert(h.remove(data[i]));
-			assert(h.find(data[i]) == nullptr);
+			assert(h.erase(data[i]));
+			assert(h.find(data[i]) == h.end());
 			h.validate();
 		}
 	}
@@ -151,7 +151,7 @@ static _declspec(noinline) void test_fhash_table()
 			{
 				for (int32_t i : data)
 				{
-					sum += *m.find(i);
+					sum += m.find(i).value();
 				}
 			}
 			auto end = std::chrono::high_resolution_clock::now();
@@ -174,5 +174,7 @@ int main()
 	fhash_table<std::string, int> hhh = hh;
 	functional_test();
 	perf_test();
+	std::unordered_map<int, int> mm;
+	mm.find(4);
 	return 0;
 }
