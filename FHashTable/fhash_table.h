@@ -6,7 +6,7 @@
 
 struct fhash_default_allocator_policy
 {
-	static constexpr int32_t average_number_of_elements_per_bucket100 = 120;
+	static constexpr int32_t average_number_of_elements_per_bucket100 = 150;
 	static constexpr int32_t min_number_of_hash_buckets = 2;
 	static constexpr int32_t min_number_of_entries = 4;
 };
@@ -29,6 +29,8 @@ public:
 		bool operator != (integer_t other) const { return value != other.value; }
 		bool operator >= (integer_t other) const { return value >= other.value; }
 		bool operator > (integer_t other) const { return value > other.value; }
+		integer_t operator--(int) { integer_t tmp = *this; value--; return tmp; }
+		integer_t operator++(int) { integer_t tmp = *this; value++; return tmp; }
 
 		friend integer_t operator + (integer_t a, integer_t b) { return integer_t(a.value + b.value); }
 		friend integer_t operator - (integer_t a, integer_t b) { return integer_t(a.value - b.value); }
@@ -189,6 +191,9 @@ public:
 
 		m_root = other.m_root;
 		other.m_root = invalid_index;
+
+		m_max_index = other.m_max_index;
+		other.m_max_index = invalid_index;
 	}
 
 	void copy_table(const fhash_table& other)
@@ -227,7 +232,7 @@ public:
 				entry& e = m_entries[i];
 				if (e.is_data())
 				{
-					e.d.~data();
+					e.d.destruct();
 				}
 			}
 			free(m_entries);
@@ -237,12 +242,13 @@ public:
 		m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
 		m_size = 0;
 		m_root = invalid_index;
+		m_max_index = invalid_index;
 	}
 
 	const value_t* find(key_t key) const
 	{
 		return find_index(key, compute_slot(compute_hash(key)), 
-			[this](index_t index) {return (const value_t*)&get_entry(index).d.value; },
+			[this](index_t index) {return &get_entry(index).d.get_value(); },
 			[]() {return (const value_t*)nullptr; }
 			);
 	}
@@ -371,6 +377,11 @@ public:
 		}
 	}
 
+	index_t capacity() const
+	{
+		return m_max_index + index_t(1);
+	}
+
 private:
 
 	int32_t validate_tree(index_t index) const
@@ -435,6 +446,7 @@ private:
 		t.prev = prev;
 		t.next = invalid_index;
 		t.construct(key, value);
+		update_max_index(new_index);
 		return new_index;
 	}
 
@@ -449,11 +461,14 @@ private:
 				// we are list from other slot.
 				key_t victim_key = std::move(d.get_key());
 				value_t victim_value = std::move(d.get_value());
-				d.~data();
+
+				d.destruct();
 
 				const index_t unlinked_index = unlink_index(index);
 				assert(unlinked_index == index);
 				insert_empty(d, key, value);
+
+				update_max_index(index);
 
 				insert_index_no_check(compute_slot(compute_hash(victim_key)), victim_key, victim_value);
 				return index;
@@ -469,7 +484,16 @@ private:
 			m_size++;
 			remove_node(index);
 			insert_empty(d, key, value);
+			update_max_index(index);
 			return index;
+		}
+	}
+
+	void update_max_index(index_t index)
+	{
+		if (m_max_index < index)
+		{
+			m_max_index = index;
 		}
 	}
 
@@ -497,8 +521,8 @@ private:
 				const index_t unlinked_index = unlink_index(next_index);
 				assert(unlinked_index == next_index);
 
-				d.key = std::move(next.key);
-				d.value = std::move(next.value);
+				d.get_key() = std::move(next.get_key());
+				d.get_value() = std::move(next.get_value());
 				
 				index = unlinked_index;
 			}
@@ -514,6 +538,7 @@ private:
 		e.d.destruct();
 		add_node(index);
 		m_size--;
+		while (m_max_index > invalid_index && !get_entry(m_max_index).is_data()) m_max_index--;
 	}
 
 	template <typename success_operation_t, typename failed_operation_t>
@@ -911,4 +936,5 @@ private:
 	int32_t m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
 	int32_t m_size = 0;
 	index_t m_root = invalid_index;
+	index_t m_max_index = invalid_index;
 };
