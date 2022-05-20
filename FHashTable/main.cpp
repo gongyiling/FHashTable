@@ -38,6 +38,12 @@ void functional_test()
 		assert(h.find(0) == h.end());
 		assert(!h.erase(0));
 		h.validate();
+		uint32_t Sum = 0;
+		for (auto&& pr : h)
+		{
+			Sum += pr.second;
+		}
+		assert(Sum == 0);
 	}
 	{
 		fhash_table<int32_t, int32_t> h;
@@ -45,6 +51,12 @@ void functional_test()
 		h.validate();
 		assert(h.find(0) == h.end());
 		assert(h.find(1) != h.end());
+		uint32_t Sum = 0;
+		for (auto&& pr : h)
+		{
+			Sum += pr.second;
+		}
+		assert(Sum == 1);
 		assert(!h.erase(0));
 		assert(h.erase(1));
 		h.validate();
@@ -169,12 +181,7 @@ static void perf_test()
 
 int main()
 {
-	fhash_table<std::string, int> hh;
-	hh.insert("ddd", 1);
-	fhash_table<std::string, int> hhh = hh;
 	functional_test();
 	perf_test();
-	std::unordered_map<int, int> mm;
-	mm.find(4);
 	return 0;
 }

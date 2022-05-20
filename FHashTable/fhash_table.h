@@ -191,7 +191,9 @@ public:
 
 		it_key_t& key() const { return m_table.get_entry(m_index).d.get_key(); }
 
-		it_key_t& value() const { return m_table.get_entry(m_index).d.get_value(); }
+		it_value_t& value() const { return m_table.get_entry(m_index).d.get_value(); }
+
+		std::pair<const key_t&, it_value_t&> operator* () const { return std::pair<const key_t&, it_value_t&>(key(), value()); }
 
 		/** conversion to "bool" returning true if the iterator is valid. */
 		explicit operator bool() const
