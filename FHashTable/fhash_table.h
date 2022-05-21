@@ -298,7 +298,7 @@ public:
 
 	void copy_table(const fhash_table& other)
 	{
-		reserve((int32_t)other.size());
+		reserve(other.size());
 
 		// now insert old data to new table.
 		if (other.m_entries != get_default_entries())
@@ -309,7 +309,7 @@ public:
 				const entry& e = other.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
 				{
-					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
+					insert_index_no_check(compute_hash_slot(e.d.get_key()), e.d.get_key(), e.d.get_value());
 				}
 			}
 
@@ -318,7 +318,7 @@ public:
 				const entry& e = other.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)
 				{
-					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
+					insert_index_no_check(compute_hash_slot(e.d.get_key()), e.d.get_key(), e.d.get_value());
 				}
 			}
 		}
@@ -346,45 +346,44 @@ public:
 		m_max_index = invalid_index;
 	}
 
-	const_iterator find(key_t key) const
+	const value_t* find(key_t key) const
 	{
-		return find_index(key, compute_slot(compute_hash(key)), 
-			[this](index_t index) {return make_const_iterator(index); },
-			[this]() {return make_const_iterator(capacity()); }
+		return find_index(key, compute_hash_slot(key),
+			[this](index_t index) {return &get_entry(index).d.get_value(); },
+			[this]() {return (const value_t*)nullptr; }
 			);
 	}
 
-	iterator find(key_t key) 
+	value_t* find(key_t key)
 	{
-		return find_index(key, compute_slot(compute_hash(key)),
-			[this](index_t index) {return make_iterator(index); },
-			[this]() {return make_iterator(capacity()); }
+		return find_index(key, compute_hash_slot(key),
+			[this](index_t index) {return &get_entry(index).d.get_value(); },
+			[]() {return (value_t*)nullptr; }
 		);
 	}
 
 	iterator insert(key_t key, value_t value)
 	{
 		const hash_t hash = compute_hash(key);
-		if (m_size > 0)
+		const index_t index = find_index(key, compute_slot(hash), 
+			[](index_t index) {return index; },
+			[]() {return invalid_index; });
+		if (index != invalid_index)
 		{
-			const index_t index = find_index(key, compute_slot(hash), 
-				[](index_t index) {return index; },
-				[]() {return invalid_index; });
-			if (index != invalid_index)
-			{
-				// alread exists, replace it.
-				get_entry(index).d.get_value() = value;
-				return make_iterator(index);
-			}
+			// alread exists, replace it.
+			get_entry(index).d.get_value() = value;
+			return make_iterator(index);
 		}
+	
 		reserve(m_size + 1);
-		const index_t index = insert_index_no_check(compute_slot(hash), key, value);
-		return make_iterator(index);
+		return make_iterator(insert_index_no_check(compute_slot(hash), key, value));
 	}
 
 	iterator erase(key_t key)
 	{
-		return erase(find(key));
+		return find_index(key, compute_hash_slot(key),
+			[this](index_t index) {return erase(make_iterator(index)); },
+			[this]() {return make_iterator(capacity()); });
 	}
 
 	void validate() const
@@ -467,7 +466,7 @@ public:
 		return distances;
 	}
 
-	size_t size() const
+	int32_t size() const
 	{
 		return m_size;
 	}
@@ -554,6 +553,11 @@ private:
 		return index_t(h.value & m_bucket_size_minus_one);
 	}
 
+	index_t compute_hash_slot(key_t key)
+	{
+		return compute_slot(compute_hash(key));
+	}
+
 	void insert_empty(data& d, key_t key, value_t value)
 	{
 		d.construct(key, value);
@@ -609,7 +613,7 @@ private:
 
 				update_max_index(index);
 
-				insert_index_no_check(compute_slot(compute_hash(victim_key)), victim_key, victim_value);
+				insert_index_no_check(compute_hash_slot(victim_key), victim_key, victim_value);
 				return index;
 			}
 			else
@@ -756,7 +760,7 @@ loop_start:
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
 				{
-					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
+					insert_index_no_check(compute_hash_slot(e.d.get_key()), e.d.get_key(), e.d.get_value());
 				}
 			}
 
@@ -765,7 +769,7 @@ loop_start:
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)
 				{
-					insert_index_no_check(compute_slot(compute_hash(e.d.get_key())), e.d.get_key(), e.d.get_value());
+					insert_index_no_check(compute_hash_slot(e.d.get_key()), e.d.get_key(), e.d.get_value());
 				}
 			}
 		}
@@ -813,7 +817,7 @@ private:
 		return get_entry(node_index).n;
 	}
 
-	// size tree operation.
+	// tree operation.
 	index_t build_tree(index_t begin, index_t end)
 	{
 		if (begin == end)
@@ -896,7 +900,6 @@ private:
 		const node_index_t erased_node_index = index_to_node_index(erased_index);
 
 		// copied from std::_Tree_val::_Extract
-		// TODO optimize these messes.
 		node_index_t erased_node = erased_node_index;
 		node_index_t fixnode;
 		node_index_t fixnode_parent;
