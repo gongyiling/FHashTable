@@ -239,6 +239,7 @@ public:
 
 	const_iterator begin() const { return make_const_iterator(0); }
 
+	// be caustion, erase will change the end iterator.
 	iterator      end() { return make_iterator(capacity()); }
 
 	const_iterator end() const { return make_const_iterator(capacity()); }
@@ -490,14 +491,13 @@ public:
 
 	iterator erase(iterator it)
 	{
-		if (it == end())
+		if (it < end())
 		{
-			return end();
+			return make_iterator(remove_index(it.m_index));
 		}
 		else
 		{
-			remove_index(it.m_index);
-			return make_iterator(it.m_index);
+			return end();
 		}
 	}
 
@@ -669,15 +669,24 @@ private:
 		return index;
 	}
 
-	void remove_index(index_t index)
+	index_t remove_index(index_t index)
 	{
-		index = unlink_index(index);
-		entry& e = get_entry(index);
+		const index_t unlinked_index = unlink_index(index);
+		entry& e = get_entry(unlinked_index);
 		assert(e.is_data());
 		e.d.destruct();
-		add_node(index);
+		add_node(unlinked_index);
 		m_size--;
 		while (m_max_index > invalid_index && !get_entry(m_max_index).is_data()) m_max_index--;
+		if (unlinked_index > index)
+		{
+			// unlinked an next from the future.
+			return index;
+		}
+		else
+		{
+			return index + index_t(1);
+		}
 	}
 
 	template <typename success_operation_t, typename failed_operation_t>

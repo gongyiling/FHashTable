@@ -59,8 +59,8 @@ void functional_test()
 		assert(Sum == 1);
 		assert(h.erase(0) == h.end());
 
-		auto erased_it = h.erase(1);
 		auto end_it = h.end();
+		auto erased_it = h.erase(1);
 		assert(erased_it == end_it);
 		h.validate();
 	}
