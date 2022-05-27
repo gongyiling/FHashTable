@@ -2,12 +2,12 @@
 ## Intruduction
 FHashTable is an stl like hash table, it's highly cache friendly by allocating node together within the same bucket, most of the time the finding operation cost at most one cache miss.
 ## Details
-Its essence is a large array. One part of Node forms a Chain HashTable in the form of a double list, and the other part forms a binary tree. With the insertion and deletion of elements, the two parts of Node can be converted to each other.
+Its essence is a large array. One part of node forms a Chained HashTable in the form of a doublely linked list, and the other part forms a binary tree. With the insertion and deletion of elements, the two parts of node can be converted to each other.
 ![image](https://github.com/gongyiling/FHashTable/blob/master/IMGS/fhash_table.png)
-1. When initializing, all elements in the array are formed into a binary tree in the order of subscripting.
-2. When inserting, let the binary tree assign us an Node closest to the bucket and insert it.
+1. When initializing, all nodes in the array are formed into a binary tree in the order of subscripting.
+2. When inserting element, let the binary tree assign us an node closest to the bucket and insert it.
 ## Performance
-the benchmark environment: VS2019 + WIN10 + Intel Core i7 7700, TMap comes from UE4.24, TSherwoodHashTable is implemented based on https://github.com/skarupke/flat_hash_map/blob/master/flat_hash_map.hpp. TSherwoodMap data is incomplete, this is because when N exceeds 500K, TSherwoodMap memory explodes, so there is no data.
+the benchmark environment: VS2019 + WIN10 + Intel Core i7 7700. TMap comes from UE4.24, TSherwoodHashTable is implemented based on https://github.com/skarupke/flat_hash_map/blob/master/flat_hash_map.hpp. TSherwoodMap data is incomplete, this is because when N exceeds 500K, TSherwoodMap memory explodes.
 
 ### FindSuccess
 one hash table, find per element once.
