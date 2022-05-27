@@ -5,7 +5,7 @@ FHashTable is an stl like hash table, it's highly cache friendly by allocating n
 Its essence is a large array. One part of Node forms a Chain HashTable in the form of a double list, and the other part forms a binary tree. With the insertion and deletion of elements, the two parts of Node can be converted to each other.
 ![image](https://github.com/gongyiling/FHashTable/blob/master/IMGS/fhash_table.png)
 1. When initializing, all elements in the array are formed into a binary tree in the order of subscripting.
-2. When inserting, let the binary tree assign us an element closest to the bucket and insert it.
+2. When inserting, let the binary tree assign us an Node closest to the bucket and insert it.
 ## Performance
 the benchmark environment: VS2019 + WIN10 + Intel Core i7 7700, TMap comes from UE4.24, TSherwoodHashTable is implemented based on https://github.com/skarupke/flat_hash_map/blob/master/flat_hash_map.hpp. TSherwoodMap data is incomplete, this is because when N exceeds 500K, TSherwoodMap memory explodes, so there is no data.
 
