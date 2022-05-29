@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <chrono>
+#include <cmath>
 
 template <bool remove_duplicated>
 std::vector<int32_t> gen_random_data(int32_t N)
@@ -148,7 +149,7 @@ void functional_test()
 	}
 }
 
-static _declspec(noinline) void test_find_success()
+static void test_find_success()
 {
 	for (int32_t i = 1; i < 15; i++)
 	{

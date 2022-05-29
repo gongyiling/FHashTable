@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <memory>
 #include <vector>
+#include <limits>
 
 struct fhash_default_allocator_policy
 {
@@ -1002,7 +1003,7 @@ private:
 	index_t find_min_distance_node(index_t index) const
 	{
 		index_t current = m_root;
-		int32_t min_distance = INT_MAX;
+		int32_t min_distance = std::numeric_limits<int32_t>::max();
 		index_t min_distance_index = invalid_index;
 		while (current != invalid_index)
 		{
@@ -1090,3 +1091,12 @@ private:
 	index_t m_root = invalid_index;
 	index_t m_max_index = invalid_index;
 };
+
+template <typename key_t, typename value_t, typename hasher_t, typename allocator_policy>
+constexpr typename fhash_table<key_t, value_t, hasher_t, allocator_policy>::index_t 
+	fhash_table<key_t, value_t, hasher_t, allocator_policy>::invalid_index;
+
+template <typename key_t, typename value_t, typename hasher_t, typename allocator_policy>
+constexpr typename fhash_table<key_t, value_t, hasher_t, allocator_policy>::node_index_t 
+	fhash_table<key_t, value_t, hasher_t, allocator_policy>::invalid_node_index;
+
