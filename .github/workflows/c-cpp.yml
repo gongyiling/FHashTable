@@ -13,5 +13,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: goto_work_directory
+      run: cd ./FHashTable
     - name: make
-      run: make Makefile
+      run: make
+    - name: run_test
+      run: ./main
