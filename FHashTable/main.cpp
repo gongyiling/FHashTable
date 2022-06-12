@@ -175,7 +175,7 @@ static void test_find_success()
 			}
 			auto end = std::chrono::high_resolution_clock::now();
 			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-			std::cout << "std::fhash_table, elapsed milliseconds: " << elapsed << " sum: " << sum << " load_factor: " << m.load_factor() << std::endl;
+			std::cout << "fhash_table, elapsed milliseconds: " << elapsed << " sum: " << sum << " load_factor: " << m.load_factor() << std::endl;
 		}
 		{
 			std::unordered_map<int64_t, int64_t> m;
