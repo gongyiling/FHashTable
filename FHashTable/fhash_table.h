@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <limits>
+#include <cmath>
 
 struct fhash_default_allocator_policy
 {
@@ -703,19 +704,19 @@ private:
 			return failed_operation();
 		}
 
-		// using goto is the most efficient way.
-loop_start:
-		if (e->d.get_key() == key)
+		do
 		{
-			return success_operation(index);
-		}
-		index = e->d.next; 
-		if (index == invalid_index)
-		{
-			return failed_operation();
-		}
-		e = &get_entry(index);
-		goto loop_start;
+			if (e->d.get_key() == key)
+			{
+				return success_operation(index);
+			}
+			index = e->d.next; 
+			if (index == invalid_index)
+			{
+				return failed_operation();
+			}
+			e = &get_entry(index);
+		} while(true);
 	}
 
 	static int32_t next_power_of_2(int32_t v)
