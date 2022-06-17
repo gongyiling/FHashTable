@@ -77,16 +77,17 @@ void functional_test()
 		}
 	}
 	{
-		fhash_table<int32_t, int32_t> h;
+		using fhash_table_t = fhash_table<int64_t, int64_t>;
+		fhash_table_t h;
 		std::vector<int64_t> data = gen_random_data<true>(1000);
 		for (size_t i = 0; i < data.size(); i++)
 		{
-			int32_t d = data[i];
-			h.insert(d, int32_t(i));
+			int64_t d = data[i];
+			h.insert(d, int64_t(i));
 			assert(h.find(d) != nullptr);
 			h.validate();
 		}
-		std::vector<int32_t> distances = h.get_distance_stats();
+		std::vector<typename fhash_table_t::fhash_size_t> distances = h.get_distance_stats();
 		int64_t sum = 0;
 		for (size_t i = 0; i < distances.size(); i++)
 		{
@@ -102,8 +103,8 @@ void functional_test()
 		float factor10 = float(sum10) / h.size();
 		for (size_t i = 0; i < data.size(); i++)
 		{
-			int32_t d = data[i];
-			const int32_t* pi = h.find(d);
+			int64_t d = data[i];
+			const int64_t* pi = h.find(d);
 			assert(*pi == i);
 		}
 
@@ -118,7 +119,8 @@ void functional_test()
 
 	// random test.
 	{
-		fhash_table<int32_t, int32_t> h;
+		using fhash_table_t = fhash_table<int32_t, int32_t>;
+		fhash_table_t h;
 		for (uint32_t j = 0; j < 100; j++)
 		{
 			const uint32_t N = 1000;
@@ -128,7 +130,7 @@ void functional_test()
 			}
 
 			uint32_t deleted = 0;
-			uint32_t total = h.size();
+			typename fhash_table_t::fhash_size_t total = h.size();
 			for (uint32_t k = 0; k < 10; k++)
 			{
 				for (auto it = h.begin(); it < h.end();)
@@ -153,7 +155,7 @@ static void test_find_success()
 {
 	for (int32_t i = 1; i < 15; i++)
 	{
-		const int32_t N = std::pow(3, i);
+		const int32_t N = int32_t(std::pow(3, i));
 		std::cout << "N = " << N << std::endl;
 		std::vector<int64_t> data = gen_random_data<true>(N);
 		{

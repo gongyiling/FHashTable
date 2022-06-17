@@ -11,12 +11,16 @@ struct fhash_default_allocator_policy
 	static constexpr int32_t average_number_of_elements_per_bucket100 = 150;
 	static constexpr int32_t min_number_of_hash_buckets = 2;
 	static constexpr int32_t min_number_of_entries = 4;
+	using fhash_size_t = int32_t;
+	// consider using int64_t if the table size may be larger than 2^30, with the cost of performance.
+	// using fhash_size_t = int64_t;
 };
 
 template <typename key_t, typename value_t, typename hasher_t = std::hash<key_t>, typename allocator_policy = fhash_default_allocator_policy>
 class fhash_table
 {
 public:
+	using fhash_size_t = typename allocator_policy::fhash_size_t;
 	template <typename raw_integer_t, typename tag>
 	struct integer_t
 	{
@@ -44,9 +48,9 @@ public:
 	struct tag_node_index {};
 	struct tag_hash {};
 
-	using index_t = integer_t<int32_t, tag_index>;
-	using node_index_t = integer_t<int32_t, tag_node_index>;
-	using hash_t = integer_t<size_t, tag_hash>;
+	using index_t = integer_t<fhash_size_t, tag_index>;
+	using node_index_t = integer_t<fhash_size_t, tag_node_index>;
+	using hash_t = integer_t<fhash_size_t, tag_hash>;
 
 	static constexpr index_t invalid_index = index_t(-1);
 	static constexpr node_index_t invalid_node_index = node_index_t(-2);
@@ -305,8 +309,8 @@ public:
 		// now insert old data to new table.
 		if (other.m_entries != get_default_entries())
 		{
-			const int32_t cap = other.capacity();
-			for (int32_t i = 0; i < cap; i++)
+			const fhash_size_t cap = other.capacity();
+			for (fhash_size_t i = 0; i < cap; i++)
 			{
 				const entry& e = other.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
@@ -315,7 +319,7 @@ public:
 				}
 			}
 
-			for (int32_t i = 0; i < cap; i++)
+			for (fhash_size_t i = 0; i < cap; i++)
 			{
 				const entry& e = other.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)
@@ -330,7 +334,7 @@ public:
 	{
 		if (m_entries != get_default_entries())
 		{
-			for (int32_t i = 0; i < m_entries_size; i++)
+			for (fhash_size_t i = 0; i < m_entries_size; i++)
 			{
 				entry& e = m_entries[i];
 				if (e.is_data())
@@ -394,9 +398,9 @@ public:
 		{
 			std::vector<bool> visited;
 			visited.resize(m_entries_size);
-			int32_t size = 0;
-			int32_t visited_size = 0;
-			for (int32_t i = 0; i < m_entries_size; i++)
+			fhash_size_t size = 0;
+			fhash_size_t visited_size = 0;
+			for (fhash_size_t i = 0; i < m_entries_size; i++)
 			{
 				index_t index = index_t(i);
 				const entry* e = &get_entry(index);
@@ -426,12 +430,12 @@ public:
 			assert(size == visited_size);
 			assert(size == m_size);
 			
-			int32_t tree_size = validate_tree(m_root);
+			fhash_size_t tree_size = validate_tree(m_root);
 			assert(tree_size + m_size == m_entries_size);
 		}
 	}
 
-	void reserve(int32_t expected_size)
+	void reserve(fhash_size_t expected_size)
 	{
 		if (allocatable_bucket_size() < get_number_of_hash_buckets(expected_size) || expected_size > m_entries_size)
 		{
@@ -439,14 +443,14 @@ public:
 		}
 	}
 
-	std::vector<int32_t> get_distance_stats() const
+	std::vector<fhash_size_t> get_distance_stats() const
 	{
-		std::vector<int32_t> distances;
+		std::vector<fhash_size_t> distances;
 		if (m_entries == get_default_entries())
 		{
 			return distances;
 		}
-		for (int32_t i = 0; i < m_entries_size; i++)
+		for (fhash_size_t i = 0; i < m_entries_size; i++)
 		{
 			index_t index = index_t(i);
 			const entry* e = &get_entry(index);
@@ -455,7 +459,7 @@ public:
 				index_t prev_index = index;
 				for (; index != invalid_index; index = e->d.next, e = &get_entry(index))
 				{
-					const uint32_t distance = std::abs((index - prev_index).value);
+					const std::make_unsigned_t<fhash_size_t> distance = std::abs((index - prev_index).value);
 					prev_index = index;
 					if (distances.size() <= distance)
 					{
@@ -468,7 +472,7 @@ public:
 		return distances;
 	}
 
-	int32_t size() const
+	fhash_size_t size() const
 	{
 		return m_size;
 	}
@@ -485,7 +489,7 @@ public:
 		}
 	}
 
-	int32_t capacity() const
+	fhash_size_t capacity() const
 	{
 		return m_max_index.value + 1;
 	}
@@ -504,12 +508,12 @@ public:
 
 private:
 
-	iterator make_iterator(int32_t index)
+	iterator make_iterator(fhash_size_t index)
 	{
 		return iterator(*this, index_t(index));
 	}
 
-	const_iterator make_const_iterator(int32_t index)
+	const_iterator make_const_iterator(fhash_size_t index)
 	{
 		return const_iterator(*this, index_t(index));
 	}
@@ -524,13 +528,13 @@ private:
 		return const_iterator(*this, index);
 	}
 
-	int32_t validate_tree(index_t index) const
+	fhash_size_t validate_tree(index_t index) const
 	{
 		if (index == invalid_index)
 		{
 			return 0;
 		}
-		int32_t size = 1;
+		fhash_size_t size = 1;
 		const node& n = get_node(index);
 		if (n.lchild != invalid_node_index)
 		{
@@ -719,28 +723,35 @@ private:
 		} while(true);
 	}
 
-	static int32_t next_power_of_2(int32_t v)
+	template <typename integer_t>
+	static integer_t next_power_of_2(integer_t v)
 	{
-		v--;
-		v |= v >> 1;
-		v |= v >> 2;
-		v |= v >> 4;
-		v |= v >> 8;
-		v |= v >> 16;
-		v++;
+		std::make_unsigned_t<integer_t> uv = v;
+
+		// this loop only works for unsigned integer type.
+		uv--;
+		for (size_t i = 1; i < sizeof(uv) * 8; i *= 2)
+		{
+			uv |= uv >> i;
+		}
+		++uv;
+
+		v = uv;
+		assert(v >= 0);
 		return v;
 	}
 
-	static int32_t get_number_of_hash_buckets(int32_t expected_size)
+	static fhash_size_t get_number_of_hash_buckets(fhash_size_t expected_size)
 	{
-		return next_power_of_2(expected_size * 100 / allocator_policy::average_number_of_elements_per_bucket100 + allocator_policy::min_number_of_hash_buckets);
+		const fhash_size_t expected_bucket_num = expected_size * 100 / allocator_policy::average_number_of_elements_per_bucket100 + allocator_policy::min_number_of_hash_buckets;
+		return next_power_of_2(expected_bucket_num);
 	}
 
-	void rehash(int32_t expected_size)
+	void rehash(fhash_size_t expected_size)
 	{
 		fhash_table old_table(std::move(*this));
 
-		const int32_t bucket_size = get_number_of_hash_buckets(expected_size);
+		const fhash_size_t bucket_size = get_number_of_hash_buckets(expected_size);
 		m_bucket_size_minus_one = bucket_size - 1;
 
 		m_entries_size = std::max(bucket_size * allocator_policy::average_number_of_elements_per_bucket100 / 100, expected_size);
@@ -756,8 +767,8 @@ private:
 		// now insert old data to new table.
 		if (old_table.m_entries != get_default_entries())
 		{
-			const int32_t cap = old_table.capacity();
-			for (int32_t i = 0; i < cap; i++)
+			const fhash_size_t cap = old_table.capacity();
+			for (fhash_size_t i = 0; i < cap; i++)
 			{
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev == invalid_index)
@@ -766,7 +777,7 @@ private:
 				}
 			}
 
-			for (int32_t i = 0; i < cap; i++)
+			for (fhash_size_t i = 0; i < cap; i++)
 			{
 				entry& e = old_table.get_entry(index_t(i));
 				if (e.is_data() && e.d.prev != invalid_index)
@@ -1004,7 +1015,7 @@ private:
 	index_t find_min_distance_node(index_t index) const
 	{
 		index_t current = m_root;
-		int32_t min_distance = std::numeric_limits<int32_t>::max();
+		fhash_size_t min_distance = std::numeric_limits<fhash_size_t>::max();
 		index_t min_distance_index = invalid_index;
 		while (current != invalid_index)
 		{
@@ -1014,7 +1025,7 @@ private:
 				return current;
 			}
 
-			const int32_t distance = std::abs((index - current).value);
+			const fhash_size_t distance = std::abs((index - current).value);
 			if (distance < min_distance)
 			{
 				min_distance_index = current;
@@ -1055,7 +1066,7 @@ private:
 		n.parent = index_to_node_index(insert_index);
 	}
 
-	int32_t allocatable_bucket_size() const
+	fhash_size_t allocatable_bucket_size() const
 	{
 		return m_entries == get_default_entries() ? 0: m_bucket_size_minus_one + 1;
 	}
@@ -1086,9 +1097,9 @@ private:
 private:
 	entry* m_entries = get_default_entries();
 	hasher_t m_hasher;
-	int32_t m_entries_size = allocator_policy::min_number_of_entries;
-	int32_t m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
-	int32_t m_size = 0;
+	fhash_size_t m_entries_size = allocator_policy::min_number_of_entries;
+	fhash_size_t m_bucket_size_minus_one = allocator_policy::min_number_of_hash_buckets - 1;
+	fhash_size_t m_size = 0;
 	index_t m_root = invalid_index;
 	index_t m_max_index = invalid_index;
 };
